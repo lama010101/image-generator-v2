@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { CalendarDays, MapPin, Eye, Zap } from "lucide-react";
+import { CalendarDays, MapPin, Eye, Zap, Loader2 } from "lucide-react";
 
 interface Image {
   id: string;
@@ -21,32 +21,53 @@ interface Image {
   width: number | null;
   height: number | null;
   cost: number | null;
+  ready: boolean | null;
 }
 
 const Gallery = () => {
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
-  const { data: images, isLoading } = useQuery({
+  const { data: images, isLoading, error } = useQuery({
     queryKey: ['images', page],
     queryFn: async () => {
+      console.log('Fetching images from database...');
       const { data, error } = await supabase
         .from('images')
         .select('*')
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching images:', error);
+        throw error;
+      }
+      
+      console.log('Fetched images:', data?.length || 0);
       return data as Image[];
     }
   });
+
+  // Filter out images that aren't ready yet
+  const readyImages = images?.filter(image => image.ready) || [];
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
           <p className="text-muted-foreground">Loading gallery...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive mb-2">Failed to load gallery</p>
+          <p className="text-muted-foreground text-sm">{error.message}</p>
         </div>
       </div>
     );
@@ -57,10 +78,12 @@ const Gallery = () => {
       <div className="container mx-auto p-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Image Gallery</h1>
-          <p className="text-muted-foreground">Generated images from prompts</p>
+          <p className="text-muted-foreground">
+            {readyImages.length} generated images • Click to view details
+          </p>
         </div>
 
-        {images?.length === 0 ? (
+        {readyImages.length === 0 ? (
           <div className="text-center py-12">
             <div className="mb-4">
               <Eye className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -70,7 +93,7 @@ const Gallery = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {images?.map((image) => (
+            {readyImages.map((image) => (
               <Dialog key={image.id}>
                 <DialogTrigger asChild>
                   <Card className="cursor-pointer hover:shadow-lg transition-all group">
@@ -81,6 +104,11 @@ const Gallery = () => {
                             src={image.optimized_image_url || image.image_url || ''}
                             alt={image.title || 'Generated image'}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            onError={(e) => {
+                              console.error('Image failed to load:', image.id);
+                              // Fallback to placeholder
+                              (e.target as HTMLImageElement).src = 'https://picsum.photos/400/400?random=fallback';
+                            }}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
@@ -118,6 +146,9 @@ const Gallery = () => {
                           src={image.optimized_image_url || image.image_url || ''}
                           alt={image.title || 'Generated image'}
                           className="w-full rounded-lg"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://picsum.photos/800/600?random=fallback';
+                          }}
                         />
                       ) : (
                         <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
