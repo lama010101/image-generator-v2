@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Search, Sparkles, MapPin, Calendar, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { generateImage } from "@/services/imageGeneration";
+import { generateImageWithRunware } from "@/services/enhancedImageGeneration";
 
 interface Prompt {
   id: string;
@@ -66,7 +66,7 @@ const Prompts = () => {
     });
 
     try {
-      const result = await generateImage({
+      const result = await generateImageWithRunware({
         promptId: prompt.id,
         prompt: prompt.prompt,
         title: prompt.title || undefined,
@@ -209,7 +209,7 @@ const Prompts = () => {
                         <>
                           <Sparkles className="mr-2 h-4 w-4" />
                           Generate Image
-                        </>
+                        </Button>
                       )}
                     </Button>
                   </div>

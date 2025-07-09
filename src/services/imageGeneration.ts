@@ -18,6 +18,9 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
   try {
     console.log('Starting image generation for prompt:', request.prompt);
     
+    // Generate a valid UUID for user_id since we don't have authentication
+    const publicUserId = crypto.randomUUID();
+    
     // Step 1: Create image record in database with pending status
     const { data: imageData, error: insertError } = await supabase
       .from('images')
@@ -26,7 +29,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         title: request.title || 'Generated Image',
         description: request.description,
         prompt_id: request.promptId,
-        user_id: 'public-user', // Using a default since no auth
+        user_id: publicUserId,
         ready: false,
         ai_generated: true,
         created_at: new Date().toISOString(),
