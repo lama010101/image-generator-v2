@@ -24,6 +24,9 @@ interface Image {
   ready: boolean | null;
 }
 
+// Local storage key for cached images
+const LOCAL_IMAGES_KEY = 'historify_cached_images';
+
 const Gallery = () => {
   const [page, setPage] = useState(0);
   const pageSize = 25;
@@ -32,20 +35,33 @@ const Gallery = () => {
     queryKey: ['images', page],
     queryFn: async () => {
       console.log('Fetching images from database...');
-      const { data, error } = await supabase
-        .from('images')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
       
-      if (error) {
-        console.error('Error fetching images:', error);
-        throw error;
+      try {
+        // Try to get from Supabase first
+        const { data, error } = await supabase
+          .from('images')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) {
+          console.warn('Supabase fetch error, falling back to local storage:', error);
+          // Fall back to local storage
+          const localImages = localStorage.getItem(LOCAL_IMAGES_KEY);
+          return localImages ? JSON.parse(localImages) as Image[] : [];
+        }
+        
+        console.log('Fetched images from Supabase:', data?.length || 0);
+        return data as Image[];
+      } catch (e) {
+        console.warn('Error fetching from Supabase, falling back to local storage:', e);
+        // Fall back to local storage
+        const localImages = localStorage.getItem(LOCAL_IMAGES_KEY);
+        return localImages ? JSON.parse(localImages) as Image[] : [];
       }
-      
-      console.log('Fetched images:', data?.length || 0);
-      return data as Image[];
-    }
+    },
+    staleTime: 30000, // 30 seconds
+    retry: false, // Don't retry on failure
   });
 
   // Filter out images that aren't ready yet

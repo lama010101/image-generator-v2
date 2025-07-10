@@ -1,8 +1,40 @@
-# Welcome to your Lovable project
+# Historify Image Generator
 
-## Project info
+## Project Overview
+
+This project is an AI image generation application that integrates with the Runware API for creating AI-generated images based on text prompts. The application includes a fallback demo mode when API keys are not configured, making it suitable for both development and production environments.
 
 **URL**: https://lovable.dev/projects/f4f9351b-4257-43c7-8f9a-48b4afea8294
+
+## Features
+
+- **AI Image Generation**: Generate images from text prompts using the Runware API
+- **Fallback Demo Mode**: Automatically uses placeholder images when API keys are not available
+- **Environment Configuration**: Easy setup with .env.local template
+- **Project Management**: Track development progress and environment health
+- **Type-Safe Settings**: Runtime-safe environment variable access
+
+## Environment Setup
+
+To use the image generation features, you need to set up your environment variables:
+
+1. Create a `.env.local` file in the project root (or copy from the template)
+2. Add your Runware API key:
+   ```
+   VITE_RUNWARE_API_KEY=your_api_key_here
+   ```
+3. Add your Supabase configuration:
+   ```
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   SUPABASE_URL=your_supabase_url
+   ```
+
+## API Integration
+
+The application uses the following services:
+
+- **Runware API**: For AI image generation
+- **Supabase**: For storing image metadata and project tasks
 
 ## How can I edit this code?
 
@@ -59,6 +91,10 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Supabase (for backend storage)
+- Axios (for API requests)
+- Zod (for runtime type validation)
+- React Query (for data fetching and caching)
 
 ## How can I deploy this project?
 
