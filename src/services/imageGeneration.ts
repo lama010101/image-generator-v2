@@ -53,23 +53,21 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     console.log('Created image record:', imageData.id);
 
     // Step 2: Generate image via Runware if API key available, otherwise fallback to placeholder
-    let imageUrl: string | null = null;
-    if (settings.VITE_RUNWARE_API_KEY) {
-      const runwareRes = await generateImageRunware({
-        prompt: request.prompt,
-      });
-      if (runwareRes.success && runwareRes.imageUrl) {
-        imageUrl = runwareRes.imageUrl;
-      } else {
-        console.warn("Runware generation failed, falling back to placeholder: ", runwareRes.error);
-      }
+    if (!settings.VITE_RUNWARE_API_KEY) {
+      throw new Error("Runware API key is missing. Please set VITE_RUNWARE_API_KEY in your environment.");
     }
 
-    if (!imageUrl) {
-      // Fallback: placeholder image
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      imageUrl = `https://picsum.photos/800/600?random=${Date.now()}`;
+    const runwareRes = await generateImageRunware({
+      prompt: request.prompt,
+    });
+
+    if (!runwareRes.success || !runwareRes.imageUrl) {
+      throw new Error(
+        `Runware image generation failed: ${runwareRes.error ?? "Unknown error"}`
+      );
     }
+
+    const imageUrl: string = runwareRes.imageUrl;
 
     // Step 3: Update image record with generated image URL
     // Update local imageData object

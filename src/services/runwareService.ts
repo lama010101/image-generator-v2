@@ -35,6 +35,7 @@ export const generateImageRunware = async (
     const payload = [
       {
         taskType: "imageInference",
+        taskUUID: crypto.randomUUID(),
         positivePrompt: req.prompt,
         outputType: "URL",
         outputFormat: "JPG",
