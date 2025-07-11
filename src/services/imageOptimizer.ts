@@ -14,30 +14,47 @@ export const optimiseToWebP1024 = async (input: Blob): Promise<OptimizationResul
   // Store original blob and its size
   const originalBlob = input;
   const originalSize = originalBlob.size;
-  
+
   try {
-    // Dynamically import the WASM build of sharp so that bundle size stays small
-    const { default: sharp } = (await import(/* @vite-ignore */ "@webassembly/sharp")) as any;
+    // Create an ImageBitmap from the input Blob (works in modern browsers)
+    const bitmap = await createImageBitmap(input);
 
-    // Convert blob -> Uint8Array buffer that sharp accepts
-    const inputBuffer = new Uint8Array(await input.arrayBuffer());
+    // Calculate new dimensions (max width 1024px, preserve aspect ratio, never enlarge)
+    const scale = Math.min(1024 / bitmap.width, 1);
+    const targetWidth = Math.round(bitmap.width * scale);
+    const targetHeight = Math.round(bitmap.height * scale);
 
-    // Resize & convert to WebP
-    const outputBuffer: Uint8Array = await sharp(inputBuffer)
-      .resize({ width: 1024, withoutEnlargement: true })
-      .webp({ quality: 90, effort: 6 })
-      .toBuffer();
+    // Draw onto an off-screen canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Cannot acquire 2D context for image optimisation');
+    }
+    ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
 
-    const optimizedBlob = new Blob([outputBuffer], { type: "image/webp" });
-    
+    // Encode to WebP (quality 0.9). If browser doesn’t support WebP encoding, this may return null.
+    const optimizedBlob: Blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas toBlob() returned null – WebP may be unsupported'));
+        },
+        'image/webp',
+        0.9
+      );
+    });
+
     return {
       original: originalBlob,
       optimized: optimizedBlob,
-      originalSize: originalSize,
-      optimizedSize: optimizedBlob.size
+      originalSize,
+      optimizedSize: optimizedBlob.size,
     };
-  } catch (err) {
-    console.error("[optimiseToWebP1024] optimization failed:", err);
-    throw new Error("Image optimization failed");
+  } catch (error) {
+    console.warn('[optimiseToWebP1024] optimisation failed, falling back to original:', error);
+    // Rethrow so calling code can decide whether to continue with original.
+    throw error;
   }
 };

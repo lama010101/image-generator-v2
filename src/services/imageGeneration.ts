@@ -21,19 +21,58 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     console.log('Starting image generation for prompt:', request.prompt);
     
     // Step 1: Create image record in database with pending status
+    // 1a. Fetch the prompt so we can copy every overlapping column into the new image record (rule compliance)
+    const { data: promptRow, error: promptError } = await supabase
+      .from('prompts')
+      .select('*')
+      .eq('id', request.promptId)
+      .single();
+
+    if (promptError || !promptRow) {
+      throw new Error(`Prompt not found for id ${request.promptId}`);
+    }
+
     // Generate a unique ID for the image
     const imageId = crypto.randomUUID();
+
+    // Remove the primary key from the prompt object; we don't want to duplicate it in the images table
+
+    // Define the set of columns that exist in BOTH tables.
+    const commonColumns = new Set([
+      '1_when_century','1_where_continent','2_when_event','2_when_event_years','2_where_landmark','2_where_landmark_km',
+      '3_when_decade','3_where_region','4_when_event','4_when_event_years','4_where_landmark','4_where_landmark_km',
+      '5_when_clues','5_where_clues','ai_generated','approx_people_count','celebrity','confidence','country',
+      'date','description','gps_coordinates','key_elements','last_verified','latitude','location','longitude',
+      'negative_prompt','prompt','real_event','source_citation','theme','title','user_id','year'
+    ] as const);
+
+    const promptColumnsSubset: Record<string, any> = {};
+    Object.keys(promptRow as any).forEach((key) => {
+      if (commonColumns.has(key as any)) {
+        promptColumnsSubset[key] = (promptRow as any)[key];
+      }
+    });
+
+    // Build the initial image record, copying ONLY overlapping prompt columns first, then overriding/adding image-specific ones
     let imageData: any = {
       id: imageId,
-      prompt: request.prompt,
-      title: request.title || 'Generated Image',
-      description: request.description,
+      ...promptColumnsSubset,
+      prompt: request.prompt, // allow updated prompt text if provided
+      title: request.title || (promptRow as any).title || 'Generated Image',
+      description: request.description ?? (promptRow as any).description,
       prompt_id: request.promptId,
-      user_id: crypto.randomUUID(), // Required by database constraint
       ready: false,
       ai_generated: true,
-      created_at: new Date().toISOString(),
+      // Use the same user as the prompt so FK constraint passes
+      user_id: (promptRow as any).user_id,
     };
+
+    // Remove keys with null/undefined to avoid inserting into generated columns
+    Object.keys(imageData).forEach((k) => {
+      if (imageData[k] === null || imageData[k] === undefined) {
+        delete imageData[k];
+      }
+    });
     
     // Try to insert into Supabase, but continue even if it fails
     const { data: dbImageData, error: insertError } = await supabase
@@ -100,8 +139,9 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
       console.log(`Image optimization complete. Original: ${optimizationResult.originalSize} bytes, Optimized: ${optimizationResult.optimizedSize} bytes`);
     } catch (error) {
-      console.error("Failed to process images:", error);
-      throw new Error("Failed to process and store images");
+      console.warn("Image optimization failed, using original image only:", error);
+      // If optimization fails, continue with the original image URL only.
+      optimizedImageUrl = originalImageUrl;
     }
 
     // Step 3: Update image record with both image URLs
@@ -123,8 +163,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
           ready: true,
           width: 1024,
           height: 1024,
-          model: settings.VITE_RUNWARE_API_KEY ? "runware" : "demo-model",
-          updated_at: new Date().toISOString()
+          model: settings.VITE_RUNWARE_API_KEY ? "runware" : "demo-model"
         })
         .eq('id', imageData.id);
 
