@@ -27,70 +27,6 @@ interface Image {
 // Local storage key for cached images
 const LOCAL_IMAGES_KEY = 'historify_cached_images';
 
-// Component to display image size information
-const ImageSizeDisplay = ({ image }: { image: Image }) => {
-  const [sizes, setSizes] = useState<ImageSizeInfo>({ originalSize: null, optimizedSize: null });
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchSizes = async () => {
-      try {
-        setIsLoading(true);
-        const [originalSize, optimizedSize] = await Promise.all([
-          image.image_url ? getImageSize(image.image_url) : Promise.resolve(null),
-          image.optimized_image_url ? getImageSize(image.optimized_image_url) : Promise.resolve(null)
-        ]);
-        
-        setSizes({
-          originalSize: originalSize ? formatFileSize(originalSize) : null,
-          optimizedSize: optimizedSize ? formatFileSize(optimizedSize) : null
-        });
-      } catch (error) {
-        console.error('Error fetching image sizes:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchSizes();
-  }, [image.image_url, image.optimized_image_url]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading sizes...
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2 text-sm">
-      <div className="flex items-center gap-2">
-        <FileImage className="h-4 w-4 text-muted-foreground" />
-        <span className="font-medium">Image Sizes:</span>
-      </div>
-      <div className="pl-6 space-y-1">
-        {sizes.originalSize && (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Original:</span>
-            <span className="font-mono">{sizes.originalSize}</span>
-          </div>
-        )}
-        {sizes.optimizedSize && (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Optimized:</span>
-            <span className="font-mono">{sizes.optimizedSize}</span>
-          </div>
-        )}
-        {!sizes.originalSize && !sizes.optimizedSize && (
-          <span className="text-muted-foreground text-sm">Size information not available</span>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const Gallery = () => {
   const [page, setPage] = useState(0);
   const pageSize = 25;
@@ -109,7 +45,9 @@ const Gallery = () => {
           .range(page * pageSize, (page + 1) * pageSize - 1);
         
         if (error) {
-          console.warn('Supabase fetch error:', error);
+          console.warn('Supabase fetch error, falling back to local storage:', error);
+          // Fall back to local storage
+          // If Supabase unavailable, surface an error instead of showing placeholder images
           throw new Error('Failed to fetch images – Supabase unavailable');
         }
         
@@ -126,6 +64,70 @@ const Gallery = () => {
 
   // Filter out images that aren't ready yet
   const readyImages = images?.filter(image => image.ready) || [];
+  
+  // Component to display image size information
+  const ImageSizeDisplay = ({ image }: { image: Image }) => {
+    const [sizes, setSizes] = useState<ImageSizeInfo>({ originalSize: null, optimizedSize: null });
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+      const fetchSizes = async () => {
+        try {
+          setIsLoading(true);
+          const [originalSize, optimizedSize] = await Promise.all([
+            image.image_url ? getImageSize(image.image_url) : Promise.resolve(null),
+            image.optimized_image_url ? getImageSize(image.optimized_image_url) : Promise.resolve(null)
+          ]);
+          
+          setSizes({
+            originalSize: originalSize ? formatFileSize(originalSize) : null,
+            optimizedSize: optimizedSize ? formatFileSize(optimizedSize) : null
+          });
+        } catch (error) {
+          console.error('Error fetching image sizes:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchSizes();
+    }, [image.image_url, image.optimized_image_url]);
+
+    if (isLoading) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading sizes...
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <FileImageIcon className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium">Image Sizes:</span>
+        </div>
+        <div className="pl-6 space-y-1">
+          {sizes.originalSize && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Original:</span>
+              <span className="font-mono">{sizes.originalSize}</span>
+            </div>
+          )}
+          {sizes.optimizedSize && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Optimized:</span>
+              <span className="font-mono">{sizes.optimizedSize}</span>
+            </div>
+          )}
+          {!sizes.originalSize && !sizes.optimizedSize && (
+            <span className="text-muted-foreground text-sm">Size information not available</span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -182,6 +184,7 @@ const Gallery = () => {
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                             onError={(e) => {
                               console.error('Image failed to load:', image.id);
+                              // Fallback to placeholder
                               (e.target as HTMLImageElement).src = 'https://picsum.photos/400/400?random=fallback';
                             }}
                           />
@@ -281,20 +284,95 @@ const Gallery = () => {
                           </div>
                         )}
                       </div>
-
-                      <div className="text-xs text-muted-foreground">
-                        Created: {new Date(image.created_at).toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{image.title || 'Untitled Image'}</DialogTitle>
+                </DialogHeader>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    {image.optimized_image_url || image.image_url ? (
+                      <img
+                        src={image.optimized_image_url || image.image_url || ''}
+                        alt={image.title || 'Generated image'}
+                        className="w-full rounded-lg"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://picsum.photos/800/600?random=fallback';
+                        }}
+                      />
+                    ) : (
+                      <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
+                        <Zap className="h-12 w-12 text-muted-foreground" />
                       </div>
+                    )}
+                  </div>
+                  <div className="space-y-4">
+                    {image.description && (
+                      <div>
+                        <h4 className="font-semibold mb-2">Description</h4>
+                        <p className="text-sm text-muted-foreground">{image.description}</p>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <h4 className="font-semibold mb-2">Prompt</h4>
+                      <p className="text-sm text-muted-foreground bg-muted p-3 rounded">{image.prompt}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {image.country && (
+                        <div>
+                          <div className="flex items-center gap-1 font-medium">
+                            <MapPin className="h-4 w-4" />
+                            Location
+                          </div>
+                          <p className="text-muted-foreground">{image.country}</p>
+                        </div>
+                      )}
+                      {image.year && (
+                        <div>
+                          <div className="flex items-center gap-1 font-medium">
+                            <CalendarDays className="h-4 w-4" />
+                            Year
+                          </div>
+                          <p className="text-muted-foreground">{image.year}</p>
+                        </div>
+                      )}
+                      <div className="col-span-2">
+                        <div className="border-t border-border pt-4">
+                          <ImageSizeDisplay image={image} />
+                        </div>
+                      </div>
+                      {image.width && image.height && (
+                        <div>
+                          <div className="font-medium">Dimensions</div>
+                          <p className="text-muted-foreground">{image.width} × {image.height}</p>
+                        </div>
+                      )}
+                      {image.model && (
+                        <div>
+                          <div className="font-medium">Model</div>
+                          <p className="text-muted-foreground">{image.model}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-muted-foreground">
+                      Created: {new Date(image.created_at).toLocaleString()}
                     </div>
                   </div>
-                </DialogContent>
-              </Dialog>
-            ))}
-          </div>
-        )}
-      </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          ))}
+        </div>
+      )}
     </div>
-  );
-};
+  </div>
+</div>
+);
 
 export default Gallery;

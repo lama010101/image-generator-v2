@@ -47,7 +47,7 @@ export const generateImageRunware = async (
     ];
 
     const response = await axios.post(
-      "https://api.runware.ai/v1/image/generate",
+      "https://api.runware.ai/v1",
       payload,
       {
         headers: {

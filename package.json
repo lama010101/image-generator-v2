@@ -61,7 +61,9 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.3",
     "zod": "^3.23.8",
-    "axios": "^1.7.2"
+    "axios": "^1.7.2",
+    "firebase": "^10.9.0",
+    "@webassembly/sharp": "^0.31.3-blitz.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
