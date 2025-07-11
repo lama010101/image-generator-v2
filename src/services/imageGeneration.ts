@@ -109,6 +109,15 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     // Upload the Runware-hosted image to Firebase Storage so that the file is under our control
     let originalImageUrl: string = runwareRes.imageUrl;
     let optimizedImageUrl: string = '';
+    // Placeholders for variant URLs and metadata so they are accessible outside the try/catch.
+    let desktopURL = '';
+    let mobileURL = '';
+    let thumbnailURL = '';
+    let variants: any = {
+      desktop: { size: 0, width: 0, height: 0 },
+      mobile: { size: 0, width: 0, height: 0 },
+      thumbnail: { size: 0, width: 0, height: 0 },
+    };
 
     try {
       // Dynamically import only in browser / client runtime to keep bundle size small.
@@ -119,25 +128,38 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       const imageResponse = await fetch(originalImageUrl);
       const originalBlob = await imageResponse.blob();
 
-      // Optimize the image
-      const { optimiseToWebP1024 } = await import("@/services/imageOptimizer");
-      const optimizationResult = await optimiseToWebP1024(originalBlob);
+      // Generate WebP variants (desktop, mobile, thumbnail)
+      const { generateWebPVariants } = await import("@/services/imageVariants");
+      variants = await generateWebPVariants(originalBlob);
 
-      // Upload original image
+      // Upload original image (for archival/reference)
       const originalStorageRef = ref(firebaseStorage, `original/${imageData.id}.jpg`);
-      await uploadBytes(originalStorageRef, optimizationResult.original, {
+      await uploadBytes(originalStorageRef, variants.original, {
         contentType: "image/jpeg",
       });
       originalImageUrl = await getDownloadURL(originalStorageRef);
 
-      // Upload optimized image
-      const optimizedStorageRef = ref(firebaseStorage, `optimized/${imageData.id}.webp`);
-      await uploadBytes(optimizedStorageRef, optimizationResult.optimized, {
-        contentType: "image/webp",
-      });
-      optimizedImageUrl = await getDownloadURL(optimizedStorageRef);
+      // Upload variant images
+      const desktopRef = ref(firebaseStorage, `desktop/${imageData.id}.webp`);
+      const mobileRef = ref(firebaseStorage, `mobile/${imageData.id}.webp`);
+      const thumbnailRef = ref(firebaseStorage, `thumbnail/${imageData.id}.webp`);
+      await Promise.all([
+        uploadBytes(desktopRef, variants.desktop.blob, { contentType: "image/webp" }),
+        uploadBytes(mobileRef, variants.mobile.blob, { contentType: "image/webp" }),
+        uploadBytes(thumbnailRef, variants.thumbnail.blob, { contentType: "image/webp" }),
+      ]);
 
-      console.log(`Image optimization complete. Original: ${optimizationResult.originalSize} bytes, Optimized: ${optimizationResult.optimizedSize} bytes`);
+      // Retrieve download URLs for the variants
+      [desktopURL, mobileURL, thumbnailURL] = await Promise.all([
+        getDownloadURL(desktopRef),
+        getDownloadURL(mobileRef),
+        getDownloadURL(thumbnailRef),
+      ]);
+
+      // We'll keep optimizedImageUrl as desktop URL for backward compatibility
+      optimizedImageUrl = desktopURL;
+
+      console.log(`Variant generation complete. Desktop: ${variants.desktop.size} bytes, Mobile: ${variants.mobile.size} bytes, Thumbnail: ${variants.thumbnail.size} bytes`);
     } catch (error) {
       console.warn("Image optimization failed, using original image only:", error);
       // If optimization fails, continue with the original image URL only.
@@ -147,10 +169,15 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     // Step 3: Update image record with both image URLs
     // Update local imageData object
     imageData.image_url = originalImageUrl;
-    imageData.optimized_image_url = optimizedImageUrl;
+    imageData.desktop_url = desktopURL;
+    imageData.mobile_url = mobileURL;
+    imageData.thumbnail_url = thumbnailURL;
+    imageData.desktop_size_kb = Math.round(variants.desktop.size / 1024);
+    imageData.mobile_size_kb = Math.round(variants.mobile.size / 1024);
+    imageData.thumbnail_size_kb = Math.round(variants.thumbnail.size / 1024);
     imageData.ready = true;
-    imageData.width = 1024;
-    imageData.height = 1024;
+    imageData.width = variants.desktop.width;
+    imageData.height = variants.desktop.height;
     imageData.model = settings.VITE_RUNWARE_API_KEY ? "runware" : "demo-model";
     
     // Try to update in Supabase
@@ -159,10 +186,15 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         .from('images')
         .update({
           image_url: originalImageUrl,
-          optimized_image_url: optimizedImageUrl,
+          desktop_url: desktopURL,
+          mobile_url: mobileURL,
+          thumbnail_url: thumbnailURL,
+          desktop_size_kb: Math.round(variants.desktop.size / 1024),
+          mobile_size_kb: Math.round(variants.mobile.size / 1024),
+          thumbnail_size_kb: Math.round(variants.thumbnail.size / 1024),
           ready: true,
-          width: 1024,
-          height: 1024,
+          width: variants.desktop.width,
+          height: variants.desktop.height,
           model: settings.VITE_RUNWARE_API_KEY ? "runware" : "demo-model"
         })
         .eq('id', imageData.id);
