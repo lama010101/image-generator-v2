@@ -169,12 +169,13 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     // Step 3: Update image record with both image URLs
     // Update local imageData object
     imageData.image_url = originalImageUrl;
-    imageData.desktop_url = desktopURL;
-    imageData.mobile_url = mobileURL;
-    imageData.thumbnail_url = thumbnailURL;
+    imageData.desktop_image_url = desktopURL;
+    imageData.mobile_image_url = mobileURL;
+    imageData.thumbnail_image_url = thumbnailURL;
     imageData.desktop_size_kb = Math.round(variants.desktop.size / 1024);
     imageData.mobile_size_kb = Math.round(variants.mobile.size / 1024);
-    imageData.thumbnail_size_kb = Math.round(variants.thumbnail.size / 1024);
+    imageData.original_size_kb = Math.round(variants.originalSize / 1024);
+    imageData.optimized_image_url = optimizedImageUrl;
     imageData.ready = true;
     imageData.width = variants.desktop.width;
     imageData.height = variants.desktop.height;
@@ -186,12 +187,13 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         .from('images')
         .update({
           image_url: originalImageUrl,
-          desktop_url: desktopURL,
-          mobile_url: mobileURL,
-          thumbnail_url: thumbnailURL,
+          optimized_image_url: optimizedImageUrl,
+          desktop_image_url: desktopURL,
+          mobile_image_url: mobileURL,
+          thumbnail_image_url: thumbnailURL,
           desktop_size_kb: Math.round(variants.desktop.size / 1024),
           mobile_size_kb: Math.round(variants.mobile.size / 1024),
-          thumbnail_size_kb: Math.round(variants.thumbnail.size / 1024),
+          original_size_kb: Math.round(variants.originalSize / 1024),
           ready: true,
           width: variants.desktop.width,
           height: variants.desktop.height,

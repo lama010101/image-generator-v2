@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CalendarDays, MapPin, Eye, Zap, Loader2, FileImage } from "lucide-react";
 import { formatFileSize, getImageSize, ImageSizeInfo } from "@/utils/imageUtils";
@@ -101,6 +103,8 @@ const ImageSizeDisplay = ({ image }: { image: Image }) => {
 
 const Gallery = () => {
   const [filters, setFilters] = useState<FiltersState>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
@@ -133,11 +137,9 @@ const Gallery = () => {
     retry: false, // Don't retry on failure
   });
 
-  // Filter out images that aren't ready yet
-  const readyImages = images?.filter(image => image.ready) || [];
-
+    // No longer filter out by ready status
   const filteredImages = useMemo(() => {
-    return readyImages.filter(image => {
+    return (images || []).filter(image => {
       // Theme filter
       if (filters.theme && (image.theme?.toLowerCase() ?? "") !== filters.theme.toLowerCase()) return false;
 
@@ -174,7 +176,35 @@ const Gallery = () => {
 
       return true;
     });
-  }, [readyImages, filters]);
+  }, [images, filters]);
+
+  // Bulk actions for selected images
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.length} selected images?`)) return;
+    const { error } = await supabase
+      .from('images')
+      .delete()
+      .in('id', selectedIds);
+
+    if (error) {
+      console.error('Delete error:', error);
+      return;
+    }
+
+    setSelectedIds([]);
+    queryClient.invalidateQueries({ queryKey: ['images'] });
+  };
+
+  const handleToggleReady = async () => {
+    if (selectedIds.length === 0) return;
+    const selectedImages = images?.filter(img => selectedIds.includes(img.id)) || [];
+    const updatePromises = selectedImages.map(img =>
+      supabase.from('images').update({ ready: !img.ready }).eq('id', img.id)
+    );
+    await Promise.all(updatePromises);
+    queryClient.invalidateQueries({ queryKey: ['images'] });
+  };
 
   if (isLoading) {
     return (
@@ -216,6 +246,33 @@ const Gallery = () => {
           </p>
         </div>
 
+        {/* Selection Toolbar */}
+        {filteredImages.length > 0 && (
+          <div className="flex items-center gap-4 mb-4">
+            <Checkbox
+              checked={selectedIds.length === filteredImages.length && filteredImages.length > 0}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  setSelectedIds(filteredImages.map((img) => img.id));
+                } else {
+                  setSelectedIds([]);
+                }
+              }}
+            />
+            <span className="text-sm">Select All</span>
+            {selectedIds.length > 0 && (
+              <>
+                <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
+                  Delete Selected ({selectedIds.length})
+                </Button>
+                <Button size="sm" onClick={handleToggleReady}>
+                  Toggle Ready
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
         {filteredImages.length === 0 ? (
           <div className="text-center py-12">
             <div className="mb-4">
@@ -229,8 +286,28 @@ const Gallery = () => {
             {filteredImages.map((image) => (
               <Dialog key={image.id}>
                 <DialogTrigger asChild>
-                  <Card className="cursor-pointer hover:shadow-lg transition-all group">
+                  <Card className="cursor-pointer hover:shadow-lg transition-all group relative">
                     <CardContent className="p-0">
+                      <Checkbox
+                        checked={selectedIds.includes(image.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedIds((prev) => [...prev, image.id]);
+                          } else {
+                            setSelectedIds((prev) => prev.filter((id) => id !== image.id));
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute top-2 left-2 z-10 bg-background/80 rounded"
+                      />
+                      {/* Ready/Not Ready Tag */}
+                      <div className="absolute top-2 right-2 z-10">
+                        {image.ready ? (
+                          <Badge className="bg-green-500 text-white">Ready</Badge>
+                        ) : (
+                          <Badge className="bg-red-500 text-white">Not Ready</Badge>
+                        )}
+                      </div>
                       <div className="aspect-square bg-muted rounded-t-lg overflow-hidden">
                         {image.optimized_image_url || image.image_url ? (
                           <img
