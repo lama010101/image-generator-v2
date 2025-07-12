@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +22,13 @@ interface Image {
   width: number | null;
   height: number | null;
   cost: number | null;
+  // Additional fields for filtering
+  theme: string | null;
+  approx_people_count: number | null;
+  confidence: number | null;
+  celebrity: boolean | null;
+  real_event: boolean | null;
+  has_full_hints: boolean | null;
   ready: boolean | null;
 }
 
@@ -92,6 +100,7 @@ const ImageSizeDisplay = ({ image }: { image: Image }) => {
 };
 
 const Gallery = () => {
+  const [filters, setFilters] = useState<FiltersState>({});
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
@@ -127,6 +136,46 @@ const Gallery = () => {
   // Filter out images that aren't ready yet
   const readyImages = images?.filter(image => image.ready) || [];
 
+  const filteredImages = useMemo(() => {
+    return readyImages.filter(image => {
+      // Theme filter
+      if (filters.theme && (image.theme?.toLowerCase() ?? "") !== filters.theme.toLowerCase()) return false;
+
+      // Location filter (country)
+      if (filters.location && (image.country?.toLowerCase() ?? "") !== filters.location.toLowerCase()) return false;
+
+      // Date created range
+      if (filters.dateCreatedRange) {
+        const [fromTs, toTs] = filters.dateCreatedRange;
+        const createdTs = new Date(image.created_at).getTime();
+        if (createdTs < fromTs || createdTs > toTs) return false;
+      }
+
+      // Number of people range
+      if (filters.numberPeopleRange && image.approx_people_count !== null) {
+        const [minP, maxP] = filters.numberPeopleRange;
+        if (image.approx_people_count < minP || image.approx_people_count > maxP) return false;
+      }
+
+      // Confidence range
+      if (filters.confidenceRange && image.confidence !== null) {
+        const [minC, maxC] = filters.confidenceRange;
+        if (image.confidence < minC || image.confidence > maxC) return false;
+      }
+
+      // Celebrity only
+      if (filters.celebrityOnly && !image.celebrity) return false;
+
+      // True event only (real_event column)
+      if (filters.trueEventOnly && !image.real_event) return false;
+
+      // Has full hints
+      if (filters.hasFullHints && !image.has_full_hints) return false;
+
+      return true;
+    });
+  }, [readyImages, filters]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -152,14 +201,22 @@ const Gallery = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6">
+        {/* Filters Panel */}
+        <FiltersPanel
+          state={filters}
+          onChange={setFilters}
+          onClear={() => setFilters({})}
+          themeOptions={[...(images?.map(i=>i.theme).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
+          locationOptions={[...(images?.map(i=>i.country).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
+        />
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Image Gallery</h1>
           <p className="text-muted-foreground">
-            {readyImages.length} generated images • Click to view details
+            {filteredImages.length} generated images • Click to view details
           </p>
         </div>
 
-        {readyImages.length === 0 ? (
+        {filteredImages.length === 0 ? (
           <div className="text-center py-12">
             <div className="mb-4">
               <Eye className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -169,7 +226,7 @@ const Gallery = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {readyImages.map((image) => (
+            {filteredImages.map((image) => (
               <Dialog key={image.id}>
                 <DialogTrigger asChild>
                   <Card className="cursor-pointer hover:shadow-lg transition-all group">

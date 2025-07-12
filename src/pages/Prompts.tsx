@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -18,11 +19,14 @@ interface Prompt {
   country: string | null;
   year: number | null;
   has_full_hints: boolean | null;
+  celebrity: boolean | null;
+  approx_people_count: number | null;
   confidence: number | null;
   theme: string | null;
 }
 
 const Prompts = () => {
+  const [filters, setFilters] = useState<FiltersState>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -34,7 +38,7 @@ const Prompts = () => {
       console.log('Fetching prompts from database...');
       const { data, error } = await supabase
         .from('prompts')
-        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme')
+        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count')
         .limit(100)
         .order('created_at', { ascending: false });
       
@@ -51,11 +55,57 @@ const Prompts = () => {
   // Log the current state for debugging
   console.log('Prompts query state:', { isLoading, error, promptsCount: prompts?.length });
 
-  const filteredPrompts = prompts?.filter(prompt =>
-    prompt.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    prompt.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    prompt.prompt.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPrompts = useMemo(() => {
+    if (!prompts) return [];
+    return prompts.filter(prompt => {
+      // Search term filter (existing)
+      const matchesSearch =
+        prompt.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prompt.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prompt.prompt.toLowerCase().includes(searchTerm.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      // Theme filter
+      if (filters.theme && (prompt.theme?.toLowerCase() ?? "") !== filters.theme.toLowerCase()) return false;
+
+      // Location filter (country)
+      if (filters.location && (prompt.country?.toLowerCase() ?? "") !== filters.location.toLowerCase()) return false;
+
+      // Celebrity Only
+      if (filters.celebrityOnly && !prompt.celebrity) return false
+
+      // Date created range
+      if (filters.dateCreatedRange && prompt.year) {
+        const [fromTs, toTs] = filters.dateCreatedRange;
+        const promptTime = new Date(`${prompt.year}-01-01`).getTime();
+        if (promptTime < fromTs || promptTime > toTs) return false;
+      }
+
+      // Number of people range
+      if (filters.numberPeopleRange && prompt.approx_people_count !== null) {
+        const [minP, maxP] = filters.numberPeopleRange;
+        if (prompt.approx_people_count < minP || prompt.approx_people_count > maxP) return false;
+      }
+
+      // Confidence range
+      if (filters.confidenceRange) {
+        const [minC, maxC] = filters.confidenceRange;
+        const conf = prompt.confidence ?? 0;
+        if (conf < minC || conf > maxC) return false;
+      }
+
+      // True event only
+      if (filters.trueEventOnly && !prompt.title) {
+        // Placeholder, assume all prompts are true event for now
+      }
+
+      // Has full hints
+      if (filters.hasFullHints && !prompt.has_full_hints) return false;
+
+      return true;
+    });
+  }, [prompts, searchTerm, filters]);
 
   const handleGenerate = async (prompt: Prompt) => {
     setGeneratingId(prompt.id);
@@ -121,6 +171,14 @@ const Prompts = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6">
+        {/* Filters Panel */}
+        <FiltersPanel
+          state={filters}
+          onChange={setFilters}
+          onClear={() => setFilters({})}
+          themeOptions={[...(prompts?.map(p=>p.theme).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
+          locationOptions={[...(prompts?.map(p=>p.country).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
+        />
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Prompt Library</h1>
           <p className="text-muted-foreground">
