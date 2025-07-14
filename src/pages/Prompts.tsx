@@ -4,12 +4,14 @@ import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, Sparkles, MapPin, Calendar, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { generateImage } from "@/services/imageGeneration";
+import { PromptDetailsDialog } from "@/components/prompt/PromptDetailsDialog";
 
 interface Prompt {
   id: string;
@@ -29,6 +31,8 @@ const Prompts = () => {
   const [filters, setFilters] = useState<FiltersState>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkGenerating, setBulkGenerating] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -39,7 +43,6 @@ const Prompts = () => {
       const { data, error } = await supabase
         .from('prompts')
         .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count')
-        .limit(100)
         .order('created_at', { ascending: false });
       
       if (error) {
@@ -51,6 +54,33 @@ const Prompts = () => {
       return data as Prompt[];
     }
   });
+
+  // Selection helpers
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filteredPrompts.map(p => p.id)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleGenerateSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkGenerating(true);
+    // Sequential generation to avoid API throttling
+    for (const prompt of filteredPrompts.filter(p => selectedIds.has(p.id))) {
+      // eslint-disable-next-line no-await-in-loop
+      await handleGenerate(prompt);
+    }
+    setBulkGenerating(false);
+    clearSelection();
+  };
 
   // Log the current state for debugging
   console.log('Prompts query state:', { isLoading, error, promptsCount: prompts?.length });
@@ -198,6 +228,22 @@ const Prompts = () => {
           </div>
         </div>
 
+        {/* Bulk actions */}
+        <div className="flex items-center gap-3 mb-4">
+          <Button variant="secondary" onClick={selectAllFiltered} disabled={filteredPrompts.length === 0}>Select All (Filtered)</Button>
+          <Button variant="secondary" onClick={clearSelection} disabled={selectedIds.size === 0}>Clear Selection</Button>
+          <Button onClick={handleGenerateSelected} disabled={selectedIds.size === 0 || bulkGenerating}>
+            {bulkGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating ({selectedIds.size})
+              </>
+            ) : (
+              <>Generate Images ({selectedIds.size})</>
+            )}
+          </Button>
+        </div>
+
         {!filteredPrompts || filteredPrompts.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground">
@@ -207,72 +253,99 @@ const Prompts = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPrompts.map((prompt) => (
-              <Card key={prompt.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg line-clamp-2">
-                        {prompt.title || 'Untitled Prompt'}
-                      </CardTitle>
-                      {prompt.description && (
-                        <CardDescription className="mt-2 line-clamp-3">
-                          {prompt.description}
-                        </CardDescription>
-                      )}
-                    </div>
-                    {prompt.has_full_hints && (
-                      <Badge variant="secondary" className="ml-2">
-                        Complete
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground line-clamp-2 bg-muted p-2 rounded">
-                      {prompt.prompt}
-                    </p>
-                    
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {prompt.country && (
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <MapPin className="h-3 w-3" />
-                          {prompt.country}
-                        </div>
-                      )}
-                      {prompt.year && (
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          {prompt.year}
-                        </div>
-                      )}
-                      {prompt.theme && (
-                        <Badge variant="outline" className="text-xs">
-                          {prompt.theme}
-                        </Badge>
-                      )}
-                    </div>
+              <PromptDetailsDialog
+  prompt={prompt}
+  trigger={
+    <div
+      style={{ cursor: "pointer" }}
+      onClick={e => {
+        // Only open modal if the click is NOT on a checkbox, button, or their children
+        const target = e.target as HTMLElement;
+        if (
+          target.closest("button") ||
+          target.closest("input[type='checkbox']")
+        ) {
+          e.preventDefault();
+          return;
+        }
+        // Otherwise allow DialogTrigger to open modal
+      }}
+    >
+      <Card className="hover:shadow-lg transition-shadow relative group">
+        {/* Selection Checkbox */}
+        <Checkbox
+          className="absolute top-4 left-4 z-10 bg-background/80 backdrop-blur-sm"
+          checked={selectedIds.has(prompt.id)}
+          onCheckedChange={() => toggleSelect(prompt.id)}
+          onClick={e => e.stopPropagation()}
+        />
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <CardTitle className="text-lg line-clamp-2">
+                {prompt.title || 'Untitled Prompt'}
+              </CardTitle>
+              {prompt.description && (
+                <CardDescription className="mt-2 line-clamp-3">
+                  {prompt.description}
+                </CardDescription>
+              )}
+            </div>
+            {prompt.has_full_hints && (
+              <Badge variant="secondary" className="ml-2">
+                Complete
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground line-clamp-2 bg-muted p-2 rounded">
+              {prompt.prompt}
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {prompt.country && (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <MapPin className="h-3 w-3" />
+                  {prompt.country}
+                </div>
+              )}
+              {prompt.year && (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  {prompt.year}
+                </div>
+              )}
+              {prompt.theme && (
+                <Badge variant="outline" className="text-xs">
+                  {prompt.theme}
+                </Badge>
+              )}
+            </div>
+            <Button
+              onClick={e => { e.stopPropagation(); handleGenerate(prompt); }}
+              disabled={generatingId === prompt.id}
+              className="w-full"
+            >
+              {generatingId === prompt.id ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate Image
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  }
+/>
 
-                    <Button 
-                      onClick={() => handleGenerate(prompt)}
-                      disabled={generatingId === prompt.id}
-                      className="w-full"
-                    >
-                      {generatingId === prompt.id ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Generate Image
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
             ))}
           </div>
         )}
