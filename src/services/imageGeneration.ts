@@ -4,10 +4,18 @@ import { generateImageRunware } from "@/services/runwareService";
 import { settings } from "@/lib/settings";
 
 export interface GenerationRequest {
+  /* Core prompt info */
   promptId: string;
   prompt: string;
   title?: string;
   description?: string;
+  negative_prompt?: string;
+  /* Generation settings */
+  model?: string;
+  steps?: number;
+  cfgScale?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface GenerationResult {
@@ -63,8 +71,11 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       prompt_id: request.promptId,
       ready: false,
       ai_generated: true,
+      model: request.model || 'runware',
       // Use the same user as the prompt so FK constraint passes
       user_id: (promptRow as any).user_id,
+      cfg_scale: request.cfgScale,
+      steps: request.steps,
     };
 
     // Remove keys with null/undefined to avoid inserting into generated columns
@@ -91,23 +102,55 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
     console.log('Created image record:', imageData.id);
 
-    // Step 2: Generate image via Runware if API key available, otherwise fallback to placeholder
-    if (!settings.VITE_RUNWARE_API_KEY) {
-      throw new Error("Runware API key is missing. Please set VITE_RUNWARE_API_KEY in your environment.");
+    // Step 2: Generate image via either Runware or FAL based on selected model
+    let originalImageUrl = "";
+    const modelSel = request.model ?? "runware:100@1";
+
+    if (modelSel.startsWith("fal-ai/")) {
+      // --- Use Fal.ai service ---
+      const { generateImageFal } = await import("@/services/falServiceQueue");
+
+      // Ensure API key present
+      if (!settings.VITE_FAL_API_KEY) {
+        throw new Error("FAL API key is missing. Please set VITE_FAL_API_KEY in your environment.");
+      }
+
+      const falRes = await generateImageFal({
+        prompt: request.prompt,
+        negative_prompt: request.negative_prompt,
+        image_size: request.width && request.height ? `${request.width}x${request.height}` : undefined,
+        model: modelSel,
+      });
+
+      if (!falRes.success || !falRes.imageUrl) {
+        throw new Error(`Fal.ai image generation failed: ${falRes.error ?? "Unknown error"}`);
+      }
+
+      originalImageUrl = falRes.imageUrl;
+    } else {
+      // --- Use Runware service ---
+      if (!settings.VITE_RUNWARE_API_KEY) {
+        throw new Error("Runware API key is missing. Please set VITE_RUNWARE_API_KEY in your environment.");
+      }
+
+      const runwareRes = await generateImageRunware({
+        prompt: request.prompt,
+        negative_prompt: request.negative_prompt,
+        width: request.width,
+        height: request.height,
+        model: modelSel,
+        steps: request.steps,
+        cfgScale: request.cfgScale,
+      });
+
+      if (!runwareRes.success || !runwareRes.imageUrl) {
+        throw new Error(`Runware image generation failed: ${runwareRes.error ?? "Unknown error"}`);
+      }
+
+      originalImageUrl = runwareRes.imageUrl;
     }
-
-    const runwareRes = await generateImageRunware({
-      prompt: request.prompt,
-    });
-
-    if (!runwareRes.success || !runwareRes.imageUrl) {
-      throw new Error(
-        `Runware image generation failed: ${runwareRes.error ?? "Unknown error"}`
-      );
-    }
-
-    // Upload the Runware-hosted image to Firebase Storage so that the file is under our control
-    let originalImageUrl: string = runwareRes.imageUrl;
+    
+    // Upload the generated image to Firebase Storage so that the file is under our control
     let optimizedImageUrl: string = '';
     // Placeholders for variant URLs and metadata so they are accessible outside the try/catch.
     let desktopURL = '';
@@ -179,7 +222,9 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     imageData.ready = true;
     imageData.width = variants.desktop.width;
     imageData.height = variants.desktop.height;
-    imageData.model = settings.VITE_RUNWARE_API_KEY ? "runware" : "demo-model";
+    imageData.model = request.model || 'runware';
+    imageData.cfg_scale = request.cfgScale;
+    imageData.steps = request.steps;
     
     // Try to update in Supabase
     try {
@@ -197,7 +242,9 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
           ready: true,
           width: variants.desktop.width,
           height: variants.desktop.height,
-          model: settings.VITE_RUNWARE_API_KEY ? "runware" : "demo-model"
+          cfg_scale: request.cfgScale,
+          steps: request.steps,
+          model: request.model || 'runware'
         })
         .eq('id', imageData.id);
 

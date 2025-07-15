@@ -63,6 +63,7 @@
     "zod": "^3.23.8",
     "zustand": "^4.5.2",
     "axios": "^1.7.2",
+    "@fal-ai/client": "^1.4.0",
     "firebase": "^10.9.0",
     "@webassembly/sharp": "^0.31.3-blitz.5"
   },
@@ -72,7 +73,7 @@
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react-swc": "^3.5.0",
+    "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",

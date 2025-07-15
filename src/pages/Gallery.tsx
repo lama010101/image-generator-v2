@@ -24,6 +24,8 @@ interface Image {
   width: number | null;
   height: number | null;
   cost: number | null;
+  cfg_scale: number | null;
+  steps: number | null;
   // Additional fields for filtering
   theme: string | null;
   approx_people_count: number | null;
@@ -412,6 +414,18 @@ const Gallery = () => {
                           <div>
                             <div className="font-medium">Model</div>
                             <p className="text-muted-foreground">{image.model}</p>
+                          </div>
+                        )}
+                        {typeof image.cfg_scale === 'number' && (
+                          <div>
+                            <div className="font-medium">CFG Scale</div>
+                            <p className="text-muted-foreground">{image.cfg_scale}</p>
+                          </div>
+                        )}
+                        {typeof image.steps === 'number' && (
+                          <div>
+                            <div className="font-medium">Steps</div>
+                            <p className="text-muted-foreground">{image.steps}</p>
                           </div>
                         )}
                       </div>

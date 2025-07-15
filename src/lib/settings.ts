@@ -6,6 +6,7 @@ import { z } from "zod";
  */
 const schema = z.object({
   VITE_RUNWARE_API_KEY: z.string().optional(),
+  VITE_FAL_API_KEY: z.string().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_URL: z.string().optional(),
 });

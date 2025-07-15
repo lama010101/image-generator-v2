@@ -3,9 +3,12 @@ import { settings } from "@/lib/settings";
 
 interface RunwareGenerateRequest {
   prompt: string;
+  negative_prompt?: string;
   width?: number;
   height?: number;
   model?: string;
+  steps?: number;
+  cfgScale?: number;
 }
 
 interface RunwareGenerateResponse {
@@ -37,10 +40,13 @@ export const generateImageRunware = async (
         taskType: "imageInference",
         taskUUID: crypto.randomUUID(),
         positivePrompt: req.prompt,
+        negativePrompt: req.negative_prompt || undefined,
         outputType: "URL",
         outputFormat: "JPG",
         width: req.width ?? 768,
         height: req.height ?? 768,
+        steps: req.steps ?? 30,
+        CFGScale: req.cfgScale ?? 7,
         model: req.model ?? "runware:101@1",
         numberResults: 1
       }

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, Sparkles, MapPin, Calendar, Loader2 } from "lucide-react";
+import { GenerationSettingsPanel } from "@/components/generate/GenerationSettingsPanel";
 import { useToast } from "@/hooks/use-toast";
 import { generateImage } from "@/services/imageGeneration";
 import { PromptDetailsDialog } from "@/components/prompt/PromptDetailsDialog";
@@ -27,12 +28,30 @@ interface Prompt {
   theme: string | null;
 }
 
+interface GenerationSettings {
+  model: string;
+  steps: number;
+  cfgScale: number;
+  width: number;
+  height: number;
+}
+
+const defaultSettings: GenerationSettings = {
+  model: "runware:100@1", // default Runware model (valid)
+  steps: 20,
+  cfgScale: 2,
+  width: 1024,
+  height: 1024,
+};
+
 const Prompts = () => {
   const [filters, setFilters] = useState<FiltersState>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
+    const [generationSettings, setGenerationSettings] =
+    useState<GenerationSettings>(defaultSettings);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -76,7 +95,7 @@ const Prompts = () => {
     // Sequential generation to avoid API throttling
     for (const prompt of filteredPrompts.filter(p => selectedIds.has(p.id))) {
       // eslint-disable-next-line no-await-in-loop
-      await handleGenerate(prompt);
+      await handleGenerate(prompt, generationSettings);
     }
     setBulkGenerating(false);
     clearSelection();
@@ -137,7 +156,7 @@ const Prompts = () => {
     });
   }, [prompts, searchTerm, filters]);
 
-  const handleGenerate = async (prompt: Prompt) => {
+  const handleGenerate = async (prompt: Prompt, settings: GenerationSettings) => {
     setGeneratingId(prompt.id);
     
     toast({
@@ -151,6 +170,12 @@ const Prompts = () => {
         prompt: prompt.prompt,
         title: prompt.title || undefined,
         description: prompt.description || undefined,
+        negative_prompt: (prompt as any).negative_prompt || undefined,
+        model: settings.model,
+        steps: settings.steps,
+        cfgScale: settings.cfgScale,
+        width: settings.width,
+        height: settings.height,
       });
 
       if (result.success) {
@@ -201,14 +226,6 @@ const Prompts = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6">
-        {/* Filters Panel */}
-        <FiltersPanel
-          state={filters}
-          onChange={setFilters}
-          onClear={() => setFilters({})}
-          themeOptions={[...(prompts?.map(p=>p.theme).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
-          locationOptions={[...(prompts?.map(p=>p.country).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
-        />
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Prompt Library</h1>
           <p className="text-muted-foreground">
@@ -216,139 +233,156 @@ const Prompts = () => {
           </p>
         </div>
 
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Search prompts..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+        <div className="flex flex-col md:flex-row gap-8">
+          {/* Left column for filters and settings */}
+          <div className="w-full md:w-[350px] flex-shrink-0">
+            <div className="space-y-6 sticky top-6">
+              <FiltersPanel
+                state={filters}
+                onChange={setFilters}
+                onClear={() => setFilters({})}
+                themeOptions={[...new Set(prompts?.map(p => p.theme).filter(Boolean) as string[])]}
+                locationOptions={[...new Set(prompts?.map(p => p.country).filter(Boolean) as string[])]}
+              />
+              <GenerationSettingsPanel
+                settings={generationSettings}
+                onSettingsChange={setGenerationSettings}
+              />
+            </div>
           </div>
-        </div>
 
-        {/* Bulk actions */}
-        <div className="flex items-center gap-3 mb-4">
-          <Button variant="secondary" onClick={selectAllFiltered} disabled={filteredPrompts.length === 0}>Select All (Filtered)</Button>
-          <Button variant="secondary" onClick={clearSelection} disabled={selectedIds.size === 0}>Clear Selection</Button>
-          <Button onClick={handleGenerateSelected} disabled={selectedIds.size === 0 || bulkGenerating}>
-            {bulkGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating ({selectedIds.size})
-              </>
+          {/* Right column for prompts grid */}
+          <div className="flex-1">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search prompts..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="secondary" size="sm" onClick={selectAllFiltered} disabled={filteredPrompts.length === 0}>Select All</Button>
+                  <Button variant="secondary" size="sm" onClick={clearSelection} disabled={selectedIds.size === 0}>Clear</Button>
+                  <Button size="sm" onClick={handleGenerateSelected} disabled={selectedIds.size === 0 || bulkGenerating}>
+                      {bulkGenerating ? (
+                          <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Generating ({selectedIds.size})
+                          </>
+                      ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Generate ({selectedIds.size})
+                          </>
+                      )}
+                  </Button>
+              </div>
+            </div>
+
+            {!filteredPrompts || filteredPrompts.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-muted-foreground">
+                  {searchTerm ? "No prompts found matching your search." : "No prompts available."}
+                </p>
+              </div>
             ) : (
-              <>Generate Images ({selectedIds.size})</>
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredPrompts.map((prompt) => (
+                  <PromptDetailsDialog
+                    key={prompt.id}
+                    prompt={prompt}
+                    trigger={
+                      <div
+                        style={{ cursor: "pointer" }}
+                        onClick={e => {
+                          const target = e.target as HTMLElement;
+                          if (target.closest("button") || target.closest("input[type='checkbox']")) {
+                            e.preventDefault();
+                            return;
+                          }
+                        }}
+                      >
+                        <Card className="hover:shadow-lg transition-shadow relative group h-full flex flex-col">
+                          <Checkbox
+                            className="absolute top-4 left-4 z-10 bg-background/80 backdrop-blur-sm"
+                            checked={selectedIds.has(prompt.id)}
+                            onCheckedChange={() => toggleSelect(prompt.id)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <CardHeader>
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <CardTitle className="text-lg line-clamp-2">
+                                  {prompt.title || 'Untitled Prompt'}
+                                </CardTitle>
+                                {prompt.description && (
+                                  <CardDescription className="mt-2 line-clamp-3">
+                                    {prompt.description}
+                                  </CardDescription>
+                                )}
+                              </div>
+                              {prompt.has_full_hints && (
+                                <Badge variant="secondary" className="ml-2 shrink-0">
+                                  Complete
+                                </Badge>
+                              )}
+                            </div>
+                          </CardHeader>
+                          <CardContent className="flex-1 flex flex-col justify-between">
+                            <p className="text-sm text-muted-foreground line-clamp-3 bg-muted p-2 rounded mb-4">
+                              {prompt.prompt}
+                            </p>
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap gap-2 text-xs">
+                                {prompt.country && (
+                                  <div className="flex items-center gap-1 text-muted-foreground">
+                                    <MapPin className="h-3 w-3" />
+                                    {prompt.country}
+                                  </div>
+                                )}
+                                {prompt.year && (
+                                  <div className="flex items-center gap-1 text-muted-foreground">
+                                    <Calendar className="h-3 w-3" />
+                                    {prompt.year}
+                                  </div>
+                                )}
+                                {prompt.theme && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {prompt.theme}
+                                  </Badge>
+                                )}
+                              </div>
+                              <Button
+                                onClick={e => { e.stopPropagation(); handleGenerate(prompt, generationSettings); }}
+                                disabled={generatingId === prompt.id}
+                                className="w-full"
+                              >
+                                {generatingId === prompt.id ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Generating...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="mr-2 h-4 w-4" />
+                                    Generate Image
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    }
+                  />
+                ))}
+              </div>
             )}
-          </Button>
+          </div>
         </div>
-
-        {!filteredPrompts || filteredPrompts.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">
-              {searchTerm ? "No prompts found matching your search." : "No prompts available."}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPrompts.map((prompt) => (
-              <PromptDetailsDialog
-  prompt={prompt}
-  trigger={
-    <div
-      style={{ cursor: "pointer" }}
-      onClick={e => {
-        // Only open modal if the click is NOT on a checkbox, button, or their children
-        const target = e.target as HTMLElement;
-        if (
-          target.closest("button") ||
-          target.closest("input[type='checkbox']")
-        ) {
-          e.preventDefault();
-          return;
-        }
-        // Otherwise allow DialogTrigger to open modal
-      }}
-    >
-      <Card className="hover:shadow-lg transition-shadow relative group">
-        {/* Selection Checkbox */}
-        <Checkbox
-          className="absolute top-4 left-4 z-10 bg-background/80 backdrop-blur-sm"
-          checked={selectedIds.has(prompt.id)}
-          onCheckedChange={() => toggleSelect(prompt.id)}
-          onClick={e => e.stopPropagation()}
-        />
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <CardTitle className="text-lg line-clamp-2">
-                {prompt.title || 'Untitled Prompt'}
-              </CardTitle>
-              {prompt.description && (
-                <CardDescription className="mt-2 line-clamp-3">
-                  {prompt.description}
-                </CardDescription>
-              )}
-            </div>
-            {prompt.has_full_hints && (
-              <Badge variant="secondary" className="ml-2">
-                Complete
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground line-clamp-2 bg-muted p-2 rounded">
-              {prompt.prompt}
-            </p>
-            <div className="flex flex-wrap gap-2 text-xs">
-              {prompt.country && (
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <MapPin className="h-3 w-3" />
-                  {prompt.country}
-                </div>
-              )}
-              {prompt.year && (
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Calendar className="h-3 w-3" />
-                  {prompt.year}
-                </div>
-              )}
-              {prompt.theme && (
-                <Badge variant="outline" className="text-xs">
-                  {prompt.theme}
-                </Badge>
-              )}
-            </div>
-            <Button
-              onClick={e => { e.stopPropagation(); handleGenerate(prompt); }}
-              disabled={generatingId === prompt.id}
-              className="w-full"
-            >
-              {generatingId === prompt.id ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate Image
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  }
-/>
-
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
