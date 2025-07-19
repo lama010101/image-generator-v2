@@ -12,6 +12,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export interface FiltersState {
   theme?: string;
@@ -25,6 +26,7 @@ export interface FiltersState {
   confidenceRange?: [number, number];
   trueEventOnly?: boolean;
   hasFullHints?: boolean;
+  usedStatus?: 'all' | 'used' | 'unused';
 }
 
 interface FiltersPanelProps {
@@ -55,6 +57,29 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
           <AccordionItem value="filters" className="border-0">
             <AccordionTrigger className="px-4">Filters</AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
+              {/* Used Status Filter */}
+              <div className="mb-4">
+                <Label className="mb-2 block text-sm font-medium">Usage Status</Label>
+                <RadioGroup
+                  value={state.usedStatus ?? 'all'}
+                  onValueChange={(val) => update({ usedStatus: val as any })}
+                  className="flex space-x-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all" id="r-all" />
+                    <Label htmlFor="r-all">All</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="used" id="r-used" />
+                    <Label htmlFor="r-used">Used</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="unused" id="r-unused" />
+                    <Label htmlFor="r-unused">Unused</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
               {/* Theme & Location */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>

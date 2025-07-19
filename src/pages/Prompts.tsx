@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Search, Sparkles, MapPin, Calendar, Loader2 } from "lucide-react";
 import { GenerationSettingsPanel } from "@/components/generate/GenerationSettingsPanel";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +27,8 @@ interface Prompt {
   approx_people_count: number | null;
   confidence: number | null;
   theme: string | null;
+  used: boolean | null;
+  images?: { id: string }[]; // joined images to infer usage
 }
 
 interface GenerationSettings {
@@ -45,6 +48,9 @@ const defaultSettings: GenerationSettings = {
 };
 
 const Prompts = () => {
+  const pageSizeOptions = [10, 25, 50];
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState<number>(0);
   const [filters, setFilters] = useState<FiltersState>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -56,13 +62,14 @@ const Prompts = () => {
   const queryClient = useQueryClient();
 
   const { data: prompts, isLoading, error } = useQuery({
-    queryKey: ['prompts'],
+    queryKey: ['prompts', page, pageSize],
     queryFn: async () => {
       console.log('Fetching prompts from database...');
       const { data, error } = await supabase
         .from('prompts')
-        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count')
-        .order('created_at', { ascending: false });
+        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count, used, images(id)')
+        .order('created_at', { ascending: false })
+        .range(page*pageSize, (page+1)*pageSize-1);
       
       if (error) {
         console.error('Error fetching prompts:', error);
@@ -70,7 +77,7 @@ const Prompts = () => {
       }
       
       console.log('Fetched prompts:', data?.length || 0);
-      return data as Prompt[];
+      return data as unknown as Prompt[];
     }
   });
 
@@ -151,6 +158,11 @@ const Prompts = () => {
 
       // Has full hints
       if (filters.hasFullHints && !prompt.has_full_hints) return false;
+
+      // Used status filter
+      const isUsed = prompt.used || (prompt.images && prompt.images.length > 0);
+      if (filters.usedStatus === 'used' && !isUsed) return false;
+      if (filters.usedStatus === 'unused' && isUsed) return false;
 
       return true;
     });
@@ -254,6 +266,20 @@ const Prompts = () => {
           {/* Right column for prompts grid */}
           <div className="flex-1">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+              {/* Pagination & Page size */}
+              <div className="flex items-center gap-4 mb-2 sm:mb-0">
+                <Button variant="outline" size="sm" disabled={page===0} onClick={()=>setPage(p=>Math.max(0,p-1))}>Prev</Button>
+                <span className="text-sm">Page {page+1}</span>
+                <Button variant="outline" size="sm" disabled={prompts && prompts.length < pageSize} onClick={()=>setPage(p=>p+1)}>Next</Button>
+                <Select value={pageSize.toString()} onValueChange={v=>{setPageSize(parseInt(v)); setPage(0);}}>
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageSizeOptions.map(opt=> <SelectItem key={opt} value={opt.toString()}>{opt}/page</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="relative w-full sm:max-w-xs">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                 <Input
@@ -324,11 +350,18 @@ const Prompts = () => {
                                   </CardDescription>
                                 )}
                               </div>
-                              {prompt.has_full_hints && (
-                                <Badge variant="secondary" className="ml-2 shrink-0">
-                                  Complete
-                                </Badge>
-                              )}
+                              <div className="flex flex-col gap-2">
+                                  {(prompt.used || (prompt.images && prompt.images.length > 0)) && (
+                                  <Badge variant="success" className="ml-2 shrink-0">
+                                    Used
+                                  </Badge>
+                                )}
+                                {prompt.has_full_hints && (
+                                  <Badge variant="secondary" className="ml-2 shrink-0">
+                                    Complete
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </CardHeader>
                           <CardContent className="flex-1 flex flex-col justify-between">

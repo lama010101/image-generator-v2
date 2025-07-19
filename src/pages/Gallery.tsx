@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -104,14 +105,15 @@ const ImageSizeDisplay = ({ image }: { image: Image }) => {
 };
 
 const Gallery = () => {
+  const pageSizeOptions = [10,25,50];
   const [filters, setFilters] = useState<FiltersState>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState<number>(25);
 
   const { data: images, isLoading, error } = useQuery({
-    queryKey: ['images', page],
+    queryKey: ['images', page, pageSize],
     queryFn: async () => {
       console.log('Fetching images from database...');
       
@@ -241,11 +243,28 @@ const Gallery = () => {
           themeOptions={[...(images?.map(i=>i.theme).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
           locationOptions={[...(images?.map(i=>i.country).filter(Boolean) as string[]).filter((v,i,a)=>a.indexOf(v)===i)]}
         />
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Image Gallery</h1>
-          <p className="text-muted-foreground">
-            {filteredImages.length} generated images • Click to view details
-          </p>
+        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+          {/* Pagination controls */}
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="sm" disabled={page===0} onClick={()=>setPage(p=>Math.max(0,p-1))}>Prev</Button>
+            <span className="text-sm">Page {page+1}</span>
+            <Button variant="outline" size="sm" disabled={images && images.length < pageSize} onClick={()=>setPage(p=>p+1)}>Next</Button>
+            <Select value={pageSize.toString()} onValueChange={v=>{setPageSize(parseInt(v)); setPage(0);}}>
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map(opt=><SelectItem key={opt} value={opt.toString()}>{opt}/page</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Image Gallery</h1>
+            <p className="text-muted-foreground">
+              {filteredImages.length} generated images • Click to view details
+            </p>
+          </div>
+
         </div>
 
         {/* Selection Toolbar */}

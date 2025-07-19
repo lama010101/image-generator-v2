@@ -2,6 +2,7 @@ import * as React from "react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Calendar } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface PromptDetailsDialogProps {
   trigger: React.ReactNode;
@@ -38,10 +39,14 @@ export const PromptDetailsDialog: React.FC<PromptDetailsDialogProps> = ({ trigge
               <div className="text-muted-foreground text-sm">{prompt.description}</div>
             </div>
           )}
-          <div>
-            <div className="font-semibold mb-1">Prompt</div>
-            <div className="text-muted-foreground bg-muted p-3 rounded text-sm">{prompt.prompt}</div>
-          </div>
+          <Accordion type="single" collapsible defaultValue="">
+            <AccordionItem value="prompt">
+              <AccordionTrigger className="font-semibold">Prompt</AccordionTrigger>
+              <AccordionContent>
+                <div className="text-muted-foreground bg-muted p-3 rounded text-sm">{prompt.prompt}</div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
           <div className="grid grid-cols-2 gap-4 text-sm">
             {prompt.country && (
               <div>

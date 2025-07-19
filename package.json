@@ -65,7 +65,8 @@
     "axios": "^1.7.2",
     "@fal-ai/client": "^1.4.0",
     "firebase": "^10.9.0",
-    "@webassembly/sharp": "^0.31.3-blitz.5"
+    "@webassembly/sharp": "^0.31.3-blitz.5",
+    "next": "^14.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

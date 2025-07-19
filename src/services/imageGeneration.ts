@@ -102,6 +102,16 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
     console.log('Created image record:', imageData.id);
 
+    // Mark the originating prompt as used
+    try {
+      await supabase
+        .from('prompts')
+        .update({ used: true })
+        .eq('id', request.promptId);
+    } catch (err) {
+      console.warn('Warning: Failed to mark prompt as used:', err);
+    }
+
     // Step 2: Generate image via either Runware or FAL based on selected model
     let originalImageUrl = "";
     const modelSel = request.model ?? "runware:100@1";
