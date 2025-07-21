@@ -26,7 +26,7 @@ export interface FiltersState {
   confidenceRange?: [number, number];
   trueEventOnly?: boolean;
   hasFullHints?: boolean;
-  usedStatus?: 'all' | 'used' | 'unused';
+  readyStatus?: 'all' | 'ready' | 'not_ready';
 }
 
 interface FiltersPanelProps {
@@ -53,29 +53,29 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   return (
     <Card className="mb-6 w-full max-w-sm">
       <CardHeader className="p-0">
-        <Accordion type="single" collapsible defaultValue="filters">
+        <Accordion type="single" collapsible>
           <AccordionItem value="filters" className="border-0">
             <AccordionTrigger className="px-4">Filters</AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
-              {/* Used Status Filter */}
+              {/* Ready Status Filter */}
               <div className="mb-4">
-                <Label className="mb-2 block text-sm font-medium">Usage Status</Label>
+                <Label className="mb-2 block text-sm font-medium">Ready</Label>
                 <RadioGroup
-                  value={state.usedStatus ?? 'all'}
-                  onValueChange={(val) => update({ usedStatus: val as any })}
+                  value={state.readyStatus ?? 'all'}
+                  onValueChange={(val) => update({ readyStatus: val as any })}
                   className="flex space-x-4"
                 >
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="all" id="r-all" />
-                    <Label htmlFor="r-all">All</Label>
+                    <RadioGroupItem value="all" id="ready-all" />
+                    <Label htmlFor="ready-all">All</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="used" id="r-used" />
-                    <Label htmlFor="r-used">Used</Label>
+                    <RadioGroupItem value="ready" id="ready-true" />
+                    <Label htmlFor="ready-true">Ready</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="unused" id="r-unused" />
-                    <Label htmlFor="r-unused">Unused</Label>
+                    <RadioGroupItem value="not_ready" id="ready-false" />
+                    <Label htmlFor="ready-false">Not Ready</Label>
                   </div>
                 </RadioGroup>
               </div>
@@ -141,6 +141,13 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                   <span>1/1/2020</span>
                   <span>{new Date().toLocaleDateString()}</span>
                 </div>
+                <div className="flex justify-between text-xs font-medium mb-1">
+                  <span>
+                    {state.dateCreatedRange
+                      ? `${new Date(state.dateCreatedRange[0]).toLocaleDateString()} - ${new Date(state.dateCreatedRange[1]).toLocaleDateString()}`
+                      : `${new Date(1577836800000).toLocaleDateString()} - ${new Date(Date.now()).toLocaleDateString()}`}
+                  </span>
+                </div>
                 <Slider
                   min={1577836800000} // 1 Jan 2020
                   max={Date.now()}
@@ -150,19 +157,35 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 />
               </div>
 
-              {/* Number of People (range) */}
-              <div className="mb-6">
+              {/* Number of People Range */}
+              <div className="mb-4">
                 <Label className="mb-2 block text-sm font-medium">Number of People</Label>
-                <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                  <span>0 people</span>
-                  <span>20+ people</span>
+                <div className="flex justify-between text-xs font-medium mb-1">
+                  <span>
+                    {state.numberPeopleRange
+                      ? `${state.numberPeopleRange[0]} - ${state.numberPeopleRange[1]}`
+                      : `0 - 100`}
+                  </span>
                 </div>
                 <Slider
                   min={0}
-                  max={20}
+                  max={100}
                   step={1}
-                  value={state.numberPeopleRange ?? [0, 20]}
-                  onValueChange={(val) => update({ numberPeopleRange: val as [number, number] })}
+                  value={
+                    state.numberPeopleRange
+                      ? [
+                          Math.max(0, Math.min(100, state.numberPeopleRange[0])),
+                          Math.max(0, Math.min(100, state.numberPeopleRange[1]))
+                        ]
+                      : [0, 100]
+                  }
+                  onValueChange={(val) => {
+                    const clamped = [
+                      Math.max(0, Math.min(100, val[0])),
+                      Math.max(0, Math.min(100, val[1]))
+                    ];
+                    update({ numberPeopleRange: clamped as [number, number] });
+                  }}
                 />
               </div>
 
@@ -172,6 +195,13 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 <div className="flex justify-between text-xs text-muted-foreground mb-1">
                   <span>0%</span>
                   <span>100%</span>
+                </div>
+                <div className="flex justify-between text-xs font-medium mb-1">
+                  <span>
+                    {state.confidenceRange
+                      ? `${state.confidenceRange[0]}% - ${state.confidenceRange[1]}%`
+                      : `0% - 100%`}
+                  </span>
                 </div>
                 <Slider
                   min={0}

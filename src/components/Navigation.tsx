@@ -9,7 +9,6 @@ const Navigation = () => {
   const navItems = [
     { path: "/", label: "Prompts", icon: List },
     { path: "/gallery", label: "Gallery", icon: Image },
-    { path: "/tasks", label: "Tasks", icon: CheckSquare },
   ];
 
   return (

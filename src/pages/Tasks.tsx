@@ -1,5 +1,5 @@
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+// This file is now obsolete and can be deleted.
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useProjectTasks, ProjectTask } from "@/hooks/useProjectTasks";

@@ -48,7 +48,7 @@ const defaultSettings: GenerationSettings = {
 };
 
 const Prompts = () => {
-  const pageSizeOptions = [10, 25, 50];
+  const pageSizeOptions = [10, 25, 50, 100, 150, 200];
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState<number>(0);
   const [filters, setFilters] = useState<FiltersState>({});
@@ -61,22 +61,74 @@ const Prompts = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: prompts, isLoading, error } = useQuery({
-    queryKey: ['prompts', page, pageSize],
+  // Fetch total count of prompts matching filters
+  const { data: totalCountData } = useQuery({
+    queryKey: ['prompts-count', filters, searchTerm],
     queryFn: async () => {
-      console.log('Fetching prompts from database...');
-      const { data, error } = await supabase
+      let query = supabase
+        .from('prompts')
+        .select('*', { count: 'exact', head: true });
+      if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
+      if (filters.theme) query = query.eq('theme', filters.theme);
+      if (filters.location) query = query.eq('country', filters.location);
+      if (filters.dateCreatedRange) {
+        const [fromTs, toTs] = filters.dateCreatedRange;
+        query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
+      }
+      if (filters.numberPeopleRange) {
+        const [minP, maxP] = filters.numberPeopleRange;
+        query = query.gte('approx_people_count', minP).lte('approx_people_count', maxP);
+      }
+      if (filters.confidenceRange) {
+        const [minC, maxC] = filters.confidenceRange;
+        query = query.gte('confidence', minC).lte('confidence', maxC);
+      }
+      if (filters.celebrityOnly) query = query.eq('celebrity', true);
+      if (filters.trueEventOnly) query = query.eq('real_event', true);
+      if (filters.hasFullHints) query = query.eq('has_full_hints', true);
+      if (filters.usedStatus === 'used') query = query.eq('used', true);
+      else if (filters.usedStatus === 'unused') query = query.is('used', null);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count ?? 0;
+    },
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const { data: prompts, isLoading, error } = useQuery({
+    queryKey: ['prompts', page, pageSize, filters, searchTerm],
+    queryFn: async () => {
+      let query = supabase
         .from('prompts')
         .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count, used, images(id)')
-        .order('created_at', { ascending: false })
-        .range(page*pageSize, (page+1)*pageSize-1);
-      
+        .order('created_at', { ascending: false });
+      if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
+      if (filters.theme) query = query.eq('theme', filters.theme);
+      if (filters.location) query = query.eq('country', filters.location);
+      if (filters.dateCreatedRange) {
+        const [fromTs, toTs] = filters.dateCreatedRange;
+        query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
+      }
+      if (filters.numberPeopleRange) {
+        const [minP, maxP] = filters.numberPeopleRange;
+        query = query.gte('approx_people_count', minP).lte('approx_people_count', maxP);
+      }
+      if (filters.confidenceRange) {
+        const [minC, maxC] = filters.confidenceRange;
+        query = query.gte('confidence', minC).lte('confidence', maxC);
+      }
+      if (filters.celebrityOnly) query = query.eq('celebrity', true);
+      if (filters.trueEventOnly) query = query.eq('real_event', true);
+      if (filters.hasFullHints) query = query.eq('has_full_hints', true);
+      if (filters.usedStatus === 'used') query = query.eq('used', true);
+      else if (filters.usedStatus === 'unused') query = query.is('used', null);
+      query = query.range(page * pageSize, (page + 1) * pageSize - 1);
+      const { data, error } = await query;
       if (error) {
         console.error('Error fetching prompts:', error);
         throw error;
       }
-      
-      console.log('Fetched prompts:', data?.length || 0);
       return data as unknown as Prompt[];
     }
   });
@@ -111,62 +163,7 @@ const Prompts = () => {
   // Log the current state for debugging
   console.log('Prompts query state:', { isLoading, error, promptsCount: prompts?.length });
 
-  const filteredPrompts = useMemo(() => {
-    if (!prompts) return [];
-    return prompts.filter(prompt => {
-      // Search term filter (existing)
-      const matchesSearch =
-        prompt.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        prompt.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        prompt.prompt.toLowerCase().includes(searchTerm.toLowerCase());
-
-      if (!matchesSearch) return false;
-
-      // Theme filter
-      if (filters.theme && (prompt.theme?.toLowerCase() ?? "") !== filters.theme.toLowerCase()) return false;
-
-      // Location filter (country)
-      if (filters.location && (prompt.country?.toLowerCase() ?? "") !== filters.location.toLowerCase()) return false;
-
-      // Celebrity Only
-      if (filters.celebrityOnly && !prompt.celebrity) return false
-
-      // Date created range
-      if (filters.dateCreatedRange && prompt.year) {
-        const [fromTs, toTs] = filters.dateCreatedRange;
-        const promptTime = new Date(`${prompt.year}-01-01`).getTime();
-        if (promptTime < fromTs || promptTime > toTs) return false;
-      }
-
-      // Number of people range
-      if (filters.numberPeopleRange && prompt.approx_people_count !== null) {
-        const [minP, maxP] = filters.numberPeopleRange;
-        if (prompt.approx_people_count < minP || prompt.approx_people_count > maxP) return false;
-      }
-
-      // Confidence range
-      if (filters.confidenceRange) {
-        const [minC, maxC] = filters.confidenceRange;
-        const conf = prompt.confidence ?? 0;
-        if (conf < minC || conf > maxC) return false;
-      }
-
-      // True event only
-      if (filters.trueEventOnly && !prompt.title) {
-        // Placeholder, assume all prompts are true event for now
-      }
-
-      // Has full hints
-      if (filters.hasFullHints && !prompt.has_full_hints) return false;
-
-      // Used status filter
-      const isUsed = prompt.used || (prompt.images && prompt.images.length > 0);
-      if (filters.usedStatus === 'used' && !isUsed) return false;
-      if (filters.usedStatus === 'unused' && isUsed) return false;
-
-      return true;
-    });
-  }, [prompts, searchTerm, filters]);
+  const filteredPrompts = prompts || [];
 
   const handleGenerate = async (prompt: Prompt, settings: GenerationSettings) => {
     setGeneratingId(prompt.id);
@@ -241,7 +238,7 @@ const Prompts = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Prompt Library</h1>
           <p className="text-muted-foreground">
-            {prompts?.length || 0} prompts available • Select a prompt to generate an image
+            {totalCountData ?? '...'} prompts available • Select a prompt to generate an image
           </p>
         </div>
 
@@ -269,7 +266,22 @@ const Prompts = () => {
               {/* Pagination & Page size */}
               <div className="flex items-center gap-4 mb-2 sm:mb-0">
                 <Button variant="outline" size="sm" disabled={page===0} onClick={()=>setPage(p=>Math.max(0,p-1))}>Prev</Button>
-                <span className="text-sm">Page {page+1}</span>
+                <span className="text-sm">Page {page+1} of {totalCountData && pageSize ? Math.max(1, Math.ceil(totalCountData / pageSize)) : '...'}</span>
+<input
+  type="number"
+  min={1}
+  max={totalCountData && pageSize ? Math.max(1, Math.ceil(totalCountData / pageSize)) : 1}
+  value={page+1}
+  onChange={e => {
+    let val = Number(e.target.value);
+    if (!isNaN(val) && val >= 1 && totalCountData && pageSize && val <= Math.ceil(totalCountData / pageSize)) {
+      setPage(val-1);
+    }
+  }}
+  className="w-16 px-2 py-1 border rounded text-sm ml-2"
+  style={{width:'60px'}}
+/>
+
                 <Button variant="outline" size="sm" disabled={prompts && prompts.length < pageSize} onClick={()=>setPage(p=>p+1)}>Next</Button>
                 <Select value={pageSize.toString()} onValueChange={v=>{setPageSize(parseInt(v)); setPage(0);}}>
                   <SelectTrigger className="w-20">

@@ -23,7 +23,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Prompts />} />
             <Route path="/gallery" element={<Gallery />} />
-            <Route path="/tasks" element={<Tasks />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
