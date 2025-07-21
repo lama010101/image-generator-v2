@@ -191,11 +191,11 @@ const Gallery = () => {
         if (filters.hasFullHints) {
           query = query.eq('has_full_hints', true);
         }
-        // Used status
-        if (filters.usedStatus === 'used') {
-          query = query.eq('used', true);
-        } else if (filters.usedStatus === 'unused') {
-          query = query.eq('used', false);
+        // Ready status
+        if (filters.readyStatus === 'ready') {
+          query = query.eq('ready', true);
+        } else if (filters.readyStatus === 'not_ready') {
+          query = query.eq('ready', false);
         }
         // Pagination
         query = query.range(page * pageSize, (page + 1) * pageSize - 1);

@@ -62,7 +62,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 <Label className="mb-2 block text-sm font-medium">Ready</Label>
                 <RadioGroup
                   value={state.readyStatus ?? 'all'}
-                  onValueChange={(val) => update({ readyStatus: val as any })}
+                  onValueChange={(val) => update({ readyStatus: val as 'all' | 'ready' | 'not_ready' })}
                   className="flex space-x-4"
                 >
                   <div className="flex items-center space-x-2">
