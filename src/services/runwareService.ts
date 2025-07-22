@@ -9,6 +9,8 @@ interface RunwareGenerateRequest {
   model?: string;
   steps?: number;
   cfgScale?: number;
+  /** Desired image output format. Defaults to 'jpg' */
+  imageType?: 'webp' | 'png' | 'jpg';
 }
 
 interface RunwareGenerateResponse {
@@ -35,6 +37,10 @@ export const generateImageRunware = async (
   }
 
   try {
+    // Determine desired output format. Default to JPG if not specified / unsupported.
+    const format = (req.imageType ?? 'jpg').toLowerCase();
+    const formatUpper = format === 'png' ? 'PNG' : format === 'webp' ? 'WEBP' : 'JPG';
+
     const payload = [
       {
         taskType: "imageInference",
@@ -42,7 +48,7 @@ export const generateImageRunware = async (
         positivePrompt: req.prompt,
         negativePrompt: req.negative_prompt || undefined,
         outputType: "URL",
-        outputFormat: "JPG",
+        outputFormat: formatUpper,
         width: req.width ?? 768,
         height: req.height ?? 768,
         steps: req.steps ?? 30,

@@ -16,6 +16,7 @@ export interface GenerationRequest {
   cfgScale?: number;
   width?: number;
   height?: number;
+  imageType?: 'webp' | 'png' | 'jpg';
 }
 
 export interface GenerationResult {
@@ -129,6 +130,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         prompt: request.prompt,
         negative_prompt: request.negative_prompt,
         image_size: request.width && request.height ? `${request.width}x${request.height}` : undefined,
+        output_format: request.imageType === 'png' ? 'png' : request.imageType === 'jpg' ? 'jpeg' : undefined,
         model: modelSel,
       });
 
@@ -151,6 +153,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         model: modelSel,
         steps: request.steps,
         cfgScale: request.cfgScale,
+        imageType: request.imageType,
       });
 
       if (!runwareRes.success || !runwareRes.imageUrl) {
@@ -181,25 +184,29 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       const imageResponse = await fetch(originalImageUrl);
       const originalBlob = await imageResponse.blob();
 
-      // Generate WebP variants (desktop, mobile, thumbnail)
-      const { generateWebPVariants } = await import("@/services/imageVariants");
-      variants = await generateWebPVariants(originalBlob);
+    // Generate variants in the selected format (desktop, mobile, thumbnail)
+    const { generateMultiFormatVariants } = await import("@/services/imageFormatService");
+    variants = await generateMultiFormatVariants(originalBlob, request.imageType || 'webp');
+
+      const imageType = request.imageType || 'webp';
+      const fileExtension = imageType === 'jpg' ? 'jpg' : imageType;
+      const mimeType = imageType === 'jpg' ? 'image/jpeg' : `image/${imageType}`;
 
       // Upload original image (for archival/reference)
-      const originalStorageRef = ref(firebaseStorage, `original/${imageData.id}.jpg`);
+      const originalStorageRef = ref(firebaseStorage, `original/${imageData.id}.${fileExtension}`);
       await uploadBytes(originalStorageRef, variants.original, {
-        contentType: "image/jpeg",
+        contentType: mimeType,
       });
       originalImageUrl = await getDownloadURL(originalStorageRef);
 
       // Upload variant images
-      const desktopRef = ref(firebaseStorage, `desktop/${imageData.id}.webp`);
-      const mobileRef = ref(firebaseStorage, `mobile/${imageData.id}.webp`);
-      const thumbnailRef = ref(firebaseStorage, `thumbnail/${imageData.id}.webp`);
+      const desktopRef = ref(firebaseStorage, `desktop/${imageData.id}.${fileExtension}`);
+      const mobileRef = ref(firebaseStorage, `mobile/${imageData.id}.${fileExtension}`);
+      const thumbnailRef = ref(firebaseStorage, `thumbnail/${imageData.id}.${fileExtension}`);
       await Promise.all([
-        uploadBytes(desktopRef, variants.desktop.blob, { contentType: "image/webp" }),
-        uploadBytes(mobileRef, variants.mobile.blob, { contentType: "image/webp" }),
-        uploadBytes(thumbnailRef, variants.thumbnail.blob, { contentType: "image/webp" }),
+        uploadBytes(desktopRef, variants.desktop.blob, { contentType: mimeType }),
+        uploadBytes(mobileRef, variants.mobile.blob, { contentType: mimeType }),
+        uploadBytes(thumbnailRef, variants.thumbnail.blob, { contentType: mimeType }),
       ]);
 
       // Retrieve download URLs for the variants

@@ -37,6 +37,7 @@ interface GenerationSettings {
   cfgScale: number;
   width: number;
   height: number;
+  imageType: 'webp' | 'png' | 'jpg';
 }
 
 const defaultSettings: GenerationSettings = {
@@ -45,6 +46,7 @@ const defaultSettings: GenerationSettings = {
   cfgScale: 2,
   width: 1024,
   height: 1024,
+  imageType: "webp",
 };
 
 const Prompts = () => {
@@ -185,6 +187,7 @@ const Prompts = () => {
         cfgScale: settings.cfgScale,
         width: settings.width,
         height: settings.height,
+        imageType: settings.imageType,
       });
 
       if (result.success) {

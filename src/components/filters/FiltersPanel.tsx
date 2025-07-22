@@ -27,6 +27,7 @@ export interface FiltersState {
   trueEventOnly?: boolean;
   hasFullHints?: boolean;
   readyStatus?: 'all' | 'ready' | 'not_ready';
+  usedStatus?: 'all' | 'used' | 'unused';
 }
 
 interface FiltersPanelProps {
@@ -57,7 +58,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
           <AccordionItem value="filters" className="border-0">
             <AccordionTrigger className="px-4">Filters</AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
-              {/* Ready Status Filter */}
+              {/* Ready Status Filter (for images) */}
               <div className="mb-4">
                 <Label className="mb-2 block text-sm font-medium">Ready</Label>
                 <RadioGroup
@@ -80,46 +81,47 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 </RadioGroup>
               </div>
 
-              {/* Theme & Location */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <Label className="mb-1 block text-sm font-medium">Filter by Theme</Label>
-                  <Select
-                    value={state.theme ?? ALL_VALUE}
-                    onValueChange={(val) => update({ theme: val === ALL_VALUE ? undefined : val })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select theme..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL_VALUE}>All</SelectItem>
-                      {themeOptions.map((opt) => (
-                        <SelectItem key={opt} value={opt}>
-                          {opt}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="mb-1 block text-sm font-medium">Filter by Location</Label>
-                  <Select
-                    value={state.location ?? ALL_VALUE}
-                    onValueChange={(val) => update({ location: val === ALL_VALUE ? undefined : val })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select location..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL_VALUE}>All</SelectItem>
-                      {locationOptions.map((opt) => (
-                        <SelectItem key={opt} value={opt}>
-                          {opt}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {/* Used Status Filter (for prompts) */}
+              <div className="mb-4">
+                <Label className="mb-2 block text-sm font-medium">Used</Label>
+                <RadioGroup
+                  value={state.usedStatus ?? 'all'}
+                  onValueChange={(val) => update({ usedStatus: val as 'all' | 'used' | 'unused' })}
+                  className="flex space-x-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all" id="used-all" />
+                    <Label htmlFor="used-all">All</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="used" id="used-true" />
+                    <Label htmlFor="used-true">Used</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="unused" id="used-false" />
+                    <Label htmlFor="used-false">Not Used</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <div className="mb-4">
+                <Label className="mb-1 block text-sm font-medium">Filter by Location</Label>
+                <Select
+                  value={state.location ?? ALL_VALUE}
+                  onValueChange={(val) => update({ location: val === ALL_VALUE ? undefined : val })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select location..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_VALUE}>All</SelectItem>
+                    {locationOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Celebrity Only */}

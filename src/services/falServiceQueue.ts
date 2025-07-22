@@ -8,6 +8,8 @@ export interface FalGenerateRequest {
   aspect_ratio?: "1:1" | "16:9" | "9:16" | "3:4" | "4:3";
   /** size as "WIDTHxHEIGHT"; only for endpoints that support it */
   image_size?: string;
+  /** Desired output image format (jpeg or png). Defaults to jpeg on server. */
+  output_format?: "jpeg" | "png";
   /** Fully qualified model path, e.g. fal-ai/imagen4/preview */
   model?: string;
 }
@@ -44,6 +46,7 @@ export const generateImageFal = async (
         negative_prompt: req.negative_prompt ?? "",
         aspect_ratio: req.aspect_ratio ?? "1:1",
         ...(req.image_size ? { image_size: req.image_size } : {}),
+        ...(req.output_format ? { output_format: req.output_format } : {}),
       },
       {
         headers: {

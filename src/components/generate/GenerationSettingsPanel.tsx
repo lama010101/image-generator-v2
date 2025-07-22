@@ -18,6 +18,7 @@ export interface GenerationSettings {
   cfgScale: number;
   width: number;
   height: number;
+  imageType: 'webp' | 'png' | 'jpg';
 }
 
 interface GenerationSettingsPanelProps {
@@ -110,6 +111,21 @@ export const GenerationSettingsPanel: React.FC<GenerationSettingsPanelProps> = (
                       onChange={(e) => update({ height: parseInt(e.target.value, 10) || 0 })}
                     />
                   </div>
+                </div>
+
+                {/* Image Type */}
+                <div className="space-y-2">
+                  <Label htmlFor="imageType">Image Format</Label>
+                  <Select value={settings.imageType} onValueChange={(val) => update({ imageType: val as 'webp' | 'png' | 'jpg' })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="webp">WebP (default)</SelectItem>
+                      <SelectItem value="png">PNG</SelectItem>
+                      <SelectItem value="jpg">JPG</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </AccordionContent>
