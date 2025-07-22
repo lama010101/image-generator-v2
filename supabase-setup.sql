@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.images (
     width INTEGER,
     height INTEGER,
     model TEXT,
-    ready BOOLEAN DEFAULT false,
+    ready BOOLEAN DEFAULT FALSE,
     ai_generated BOOLEAN DEFAULT true
 );
 
