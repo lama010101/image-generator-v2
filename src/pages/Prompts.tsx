@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -28,6 +30,7 @@ interface Prompt {
   confidence: number | null;
   theme: string | null;
   used: boolean | null;
+  real_event: boolean | null;
   images?: { id: string }[]; // joined images to infer usage
 }
 
@@ -103,7 +106,7 @@ const Prompts = () => {
     queryFn: async () => {
       let query = supabase
         .from('prompts')
-        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count, used, images(id)')
+        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count, used, real_event, images(id)')
         .order('created_at', { ascending: false });
       if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
       if (filters.theme) query = query.eq('theme', filters.theme);
@@ -166,6 +169,52 @@ const Prompts = () => {
   console.log('Prompts query state:', { isLoading, error, promptsCount: prompts?.length });
 
   const filteredPrompts = prompts || [];
+
+  const toggleRealEvent = async (prompt: Prompt, isRealEvent: boolean) => {
+    console.log('Toggling real_event:', { promptId: prompt.id, currentValue: prompt.real_event, newValue: isRealEvent });
+    
+    try {
+      const { data, error } = await supabase
+        .from('prompts')
+        .update({ real_event: isRealEvent })
+        .eq('id', prompt.id)
+        .select()
+        .single();
+      
+      console.log('Update response:', { data, error });
+      
+      if (error) {
+        console.error('Supabase update error:', error);
+        throw error;
+      }
+      
+      // Update the local state to reflect the change
+      queryClient.setQueryData(
+        ['prompts', page, pageSize, filters, searchTerm],
+        (oldData: Prompt[] | undefined) => {
+          const newData = oldData?.map(p => 
+            p.id === prompt.id ? { ...p, real_event: isRealEvent } : p
+          );
+          console.log('Updated local state:', newData?.find(p => p.id === prompt.id));
+          return newData;
+        }
+      );
+      
+      toast({
+        title: isRealEvent ? "Marked as Real Event" : "Marked as Not a Real Event",
+        description: isRealEvent 
+          ? "This prompt is now marked as a real event" 
+          : "This prompt is no longer marked as a real event"
+      });
+    } catch (error) {
+      console.error('Error updating prompt status:', error);
+      toast({
+        title: "Update Failed",
+        description: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleGenerate = async (prompt: Prompt, settings: GenerationSettings) => {
     setGeneratingId(prompt.id);
@@ -365,14 +414,25 @@ const Prompts = () => {
                                   </CardDescription>
                                 )}
                               </div>
-                              <div className="flex flex-col gap-2">
-                                  {(prompt.used || (prompt.images && prompt.images.length > 0)) && (
-                                  <Badge variant="success" className="ml-2 shrink-0">
+                              <div className="flex flex-col items-end gap-2">
+                                <div className="flex items-center space-x-2">
+                                  <Switch
+                                    id={`real-event-${prompt.id}`}
+                                    checked={!!prompt.real_event}
+                                    onCheckedChange={(checked) => toggleRealEvent(prompt, checked)}
+                                    className="data-[state=checked]:bg-green-500"
+                                  />
+                                  <Label htmlFor={`real-event-${prompt.id}`} className="text-xs">
+                                    {prompt.real_event ? 'Real Event' : 'Not Real'}
+                                  </Label>
+                                </div>
+                                {(prompt.used || (prompt.images && prompt.images.length > 0)) && (
+                                  <Badge variant="success" className="shrink-0">
                                     Used
                                   </Badge>
                                 )}
                                 {prompt.has_full_hints && (
-                                  <Badge variant="secondary" className="ml-2 shrink-0">
+                                  <Badge variant="secondary" className="shrink-0">
                                     Complete
                                   </Badge>
                                 )}
