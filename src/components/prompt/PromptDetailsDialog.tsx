@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import EditableImageMetadata from "./EditableImageMetadata";
 import { MapPin, Calendar } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -22,13 +23,41 @@ interface PromptDetailsDialogProps {
   };
 }
 
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
 export const PromptDetailsDialog: React.FC<PromptDetailsDialogProps> = ({ trigger, prompt }) => {
+  const [images, setImages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchImages() {
+      setLoading(true);
+      setError(null);
+      const { data, error } = await supabase
+        .from("images")
+        .select("*")
+        .eq("prompt_id", prompt.id);
+      if (!mounted) return;
+      if (error) {
+        setError(error.message);
+        setImages([]);
+      } else {
+        setImages(data || []);
+      }
+      setLoading(false);
+    }
+    if (prompt?.id) fetchImages();
+    return () => { mounted = false; };
+  }, [prompt?.id]);
   return (
     <Dialog>
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>{prompt.title || 'Untitled Prompt'}</DialogTitle>
         </DialogHeader>
@@ -47,6 +76,42 @@ export const PromptDetailsDialog: React.FC<PromptDetailsDialogProps> = ({ trigge
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+
+          {/* IMAGE METADATA SECTION */}
+          <div className="py-4">
+            <div className="font-semibold mb-2">Image Metadata</div>
+            {loading && <div className="text-muted-foreground text-sm">Loading image metadata...</div>}
+            {error && <div className="text-destructive text-sm">{error}</div>}
+            {!loading && !error && images.length === 0 && (
+              <div className="text-muted-foreground text-sm">No images found for this prompt.</div>
+            )}
+            {images.map((img, idx) => (
+              <EditableImageMetadata
+                key={img.id || idx}
+                image={img}
+                onSave={async (newData) => {
+                  // Save newData to DB
+                  try {
+                    const { error } = await supabase
+                      .from("images")
+                      .update(newData)
+                      .eq("id", img.id);
+                    if (error) throw error;
+                    // Refetch images after save
+                    const { data } = await supabase
+                      .from("images")
+                      .select("*")
+                      .eq("prompt_id", prompt.id);
+                    setImages(data || []);
+                  } catch (e) {
+                    alert("Failed to save: " + (e instanceof Error ? e.message : String(e)));
+                  }
+                }}
+              />
+            ))}
+          </div>
+
+          {/* ORIGINAL PROMPT SUMMARY CARDS (unchanged) */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             {prompt.country && (
               <div>
