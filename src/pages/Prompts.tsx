@@ -134,8 +134,10 @@ const Prompts = () => {
         console.error('Error fetching prompts:', error);
         throw error;
       }
-      return data as unknown as Prompt[];
-    }
+      return data as Prompt[];
+    },
+    staleTime: 30000,
+    retry: false,
   });
 
   // Selection helpers
