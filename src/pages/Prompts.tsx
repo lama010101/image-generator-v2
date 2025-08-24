@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Search, Sparkles, MapPin, Calendar, Loader2 } from "lucide-react";
+import { Search, Sparkles, MapPin, Calendar, Loader2, Trash } from "lucide-react";
 import { GenerationSettingsPanel } from "@/components/generate/GenerationSettingsPanel";
 import { useToast } from "@/hooks/use-toast";
 import { generateImage } from "@/services/imageGeneration";
@@ -61,6 +61,7 @@ const Prompts = () => {
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
     const [generationSettings, setGenerationSettings] =
     useState<GenerationSettings>(defaultSettings);
   const { toast } = useToast();
@@ -89,7 +90,8 @@ const Prompts = () => {
         query = query.gte('confidence', minC).lte('confidence', maxC);
       }
       if (filters.celebrityOnly) query = query.eq('celebrity', true);
-      if (filters.trueEventOnly) query = query.eq('real_event', true);
+      if (filters.realEventStatus === 'true') query = query.eq('real_event', true);
+      else if (filters.realEventStatus === 'fictional') query = query.eq('real_event', false);
       if (filters.hasFullHints) query = query.eq('has_full_hints', true);
       if (filters.usedStatus === 'used') query = query.eq('used', true);
       else if (filters.usedStatus === 'unused') query = query.is('used', null);
@@ -99,6 +101,7 @@ const Prompts = () => {
     },
     staleTime: 30000,
     retry: false,
+    keepPreviousData: true,
   });
 
   const { data: prompts, isLoading, error } = useQuery({
@@ -124,7 +127,8 @@ const Prompts = () => {
         query = query.gte('confidence', minC).lte('confidence', maxC);
       }
       if (filters.celebrityOnly) query = query.eq('celebrity', true);
-      if (filters.trueEventOnly) query = query.eq('real_event', true);
+      if (filters.realEventStatus === 'true') query = query.eq('real_event', true);
+      else if (filters.realEventStatus === 'fictional') query = query.eq('real_event', false);
       if (filters.hasFullHints) query = query.eq('has_full_hints', true);
       if (filters.usedStatus === 'used') query = query.eq('used', true);
       else if (filters.usedStatus === 'unused') query = query.is('used', null);
@@ -138,6 +142,7 @@ const Prompts = () => {
     },
     staleTime: 30000,
     retry: false,
+    keepPreviousData: true,
   });
 
   // Selection helpers
@@ -165,6 +170,50 @@ const Prompts = () => {
     }
     setBulkGenerating(false);
     clearSelection();
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    // simple confirm to avoid accidental deletions
+    const confirmDelete = window.confirm(`Delete ${selectedIds.size} selected prompt(s)? This cannot be undone.`);
+    if (!confirmDelete) return;
+
+    try {
+      setBulkDeleting(true);
+      const ids = Array.from(selectedIds);
+      const { error } = await supabase
+        .from('prompts')
+        .delete()
+        .in('id', ids);
+
+      if (error) throw error;
+
+      // Optimistically update local cache for current page query
+      queryClient.setQueryData(
+        ['prompts', page, pageSize, filters, searchTerm],
+        (oldData: Prompt[] | undefined) => oldData?.filter(p => !selectedIds.has(p.id))
+      );
+
+      // Invalidate list and count queries
+      queryClient.invalidateQueries({ queryKey: ['prompts', page, pageSize, filters, searchTerm] });
+      queryClient.invalidateQueries({ queryKey: ['prompts-count', filters, searchTerm] });
+
+      toast({
+        title: 'Deleted',
+        description: `${ids.length} prompt${ids.length > 1 ? 's' : ''} deleted successfully`,
+      });
+
+      clearSelection();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      toast({
+        title: 'Delete Failed',
+        description: err instanceof Error ? err.message : 'There was an error deleting prompts',
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   // Log the current state for debugging
@@ -371,6 +420,19 @@ const Prompts = () => {
                           </>
                       )}
                   </Button>
+                  <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedIds.size === 0 || bulkDeleting}>
+                    {bulkDeleting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Deleting ({selectedIds.size})
+                      </>
+                    ) : (
+                      <>
+                        <Trash className="mr-2 h-4 w-4" />
+                        Delete ({selectedIds.size})
+                      </>
+                    )}
+                  </Button>
               </div>
             </div>
 
@@ -428,6 +490,14 @@ const Prompts = () => {
                                     {prompt.real_event ? 'Real Event' : 'Not Real'}
                                   </Label>
                                 </div>
+                                {prompt.real_event ? (
+                                  <Badge variant="success" className="shrink-0">Real</Badge>
+                                ) : (
+                                  <Badge variant="destructive" className="shrink-0">Fictional</Badge>
+                                )}
+                                {typeof prompt.confidence === 'number' && (
+                                  <Badge variant="outline" className="shrink-0">Confidence: {prompt.confidence}</Badge>
+                                )}
                                 {(prompt.used || (prompt.images && prompt.images.length > 0)) && (
                                   <Badge variant="success" className="shrink-0">
                                     Used

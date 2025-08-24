@@ -24,7 +24,7 @@ export interface FiltersState {
   numberPeopleRange?: [number, number];
   /** Confidence range [min, max] */
   confidenceRange?: [number, number];
-  trueEventOnly?: boolean;
+  realEventStatus?: 'all' | 'true' | 'fictional';
   hasFullHints?: boolean;
   readyStatus?: 'all' | 'ready' | 'not_ready';
   usedStatus?: 'all' | 'used' | 'unused';
@@ -51,10 +51,40 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     onChange({ ...state, ...partial });
   };
 
+  // Local slider states to avoid spamming queries while dragging
+  const [localDateRange, setLocalDateRange] = React.useState<[number, number]>(
+    state.dateCreatedRange ?? [1577836800000, Date.now()]
+  );
+  const [localPeopleRange, setLocalPeopleRange] = React.useState<[number, number]>(
+    state.numberPeopleRange ?? [0, 100]
+  );
+  const [localConfidenceRange, setLocalConfidenceRange] = React.useState<[number, number]>(
+    state.confidenceRange ?? [0, 100]
+  );
+
+  // Sync local states if external state changes elsewhere
+  React.useEffect(() => {
+    if (state.dateCreatedRange) setLocalDateRange(state.dateCreatedRange);
+  }, [state.dateCreatedRange]);
+  React.useEffect(() => {
+    if (state.numberPeopleRange) setLocalPeopleRange(state.numberPeopleRange);
+  }, [state.numberPeopleRange]);
+  React.useEffect(() => {
+    if (state.confidenceRange) setLocalConfidenceRange(state.confidenceRange);
+  }, [state.confidenceRange]);
+
+  // Control the accordion to keep it open across re-renders
+  const [accordionValue, setAccordionValue] = React.useState<string>('filters');
+
   return (
     <Card className="mb-6 w-full max-w-sm">
       <CardHeader className="p-0">
-        <Accordion type="single" collapsible>
+        <Accordion
+          type="single"
+          collapsible
+          value={accordionValue}
+          onValueChange={(val) => setAccordionValue(val ?? '')}
+        >
           <AccordionItem value="filters" className="border-0">
             <AccordionTrigger className="px-4">Filters</AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
@@ -145,8 +175,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 </div>
                 <div className="flex justify-between text-xs font-medium mb-1">
                   <span>
-                    {state.dateCreatedRange
-                      ? `${new Date(state.dateCreatedRange[0]).toLocaleDateString()} - ${new Date(state.dateCreatedRange[1]).toLocaleDateString()}`
+                    {localDateRange
+                      ? `${new Date(localDateRange[0]).toLocaleDateString()} - ${new Date(localDateRange[1]).toLocaleDateString()}`
                       : `${new Date(1577836800000).toLocaleDateString()} - ${new Date(Date.now()).toLocaleDateString()}`}
                   </span>
                 </div>
@@ -154,8 +184,9 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                   min={1577836800000} // 1 Jan 2020
                   max={Date.now()}
                   step={24 * 60 * 60 * 1000}
-                  value={state.dateCreatedRange ?? [1577836800000, Date.now()]}
-                  onValueChange={(val) => update({ dateCreatedRange: val as [number, number] })}
+                  value={localDateRange}
+                  onValueChange={(val) => setLocalDateRange(val as [number, number])}
+                  onValueCommit={(val) => update({ dateCreatedRange: val as [number, number] })}
                 />
               </div>
 
@@ -164,8 +195,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 <Label className="mb-2 block text-sm font-medium">Number of People</Label>
                 <div className="flex justify-between text-xs font-medium mb-1">
                   <span>
-                    {state.numberPeopleRange
-                      ? `${state.numberPeopleRange[0]} - ${state.numberPeopleRange[1]}`
+                    {localPeopleRange
+                      ? `${localPeopleRange[0]} - ${localPeopleRange[1]}`
                       : `0 - 100`}
                   </span>
                 </div>
@@ -173,18 +204,12 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                   min={0}
                   max={100}
                   step={1}
-                  value={
-                    state.numberPeopleRange
-                      ? [
-                          Math.max(0, Math.min(100, state.numberPeopleRange[0])),
-                          Math.max(0, Math.min(100, state.numberPeopleRange[1]))
-                        ]
-                      : [0, 100]
-                  }
-                  onValueChange={(val) => {
+                  value={localPeopleRange}
+                  onValueChange={(val) => setLocalPeopleRange(val as [number, number])}
+                  onValueCommit={(val) => {
                     const clamped = [
-                      Math.max(0, Math.min(100, val[0])),
-                      Math.max(0, Math.min(100, val[1]))
+                      Math.max(0, Math.min(100, val[0] as number)),
+                      Math.max(0, Math.min(100, val[1] as number))
                     ];
                     update({ numberPeopleRange: clamped as [number, number] });
                   }}
@@ -200,8 +225,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 </div>
                 <div className="flex justify-between text-xs font-medium mb-1">
                   <span>
-                    {state.confidenceRange
-                      ? `${state.confidenceRange[0]}% - ${state.confidenceRange[1]}%`
+                    {localConfidenceRange
+                      ? `${localConfidenceRange[0]}% - ${localConfidenceRange[1]}%`
                       : `0% - 100%`}
                   </span>
                 </div>
@@ -209,27 +234,42 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                   min={0}
                   max={100}
                   step={1}
-                  value={state.confidenceRange ?? [0, 100]}
-                  onValueChange={(val) => update({ confidenceRange: val as [number, number] })}
+                  value={localConfidenceRange}
+                  onValueChange={(val) => setLocalConfidenceRange(val as [number, number])}
+                  onValueCommit={(val) => update({ confidenceRange: val as [number, number] })}
                 />
               </div>
 
-              {/* Toggles */}
-              <div className="space-y-4 mb-6">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">True Event Only</Label>
-                  <Switch
-                    checked={!!state.trueEventOnly}
-                    onCheckedChange={(checked) => update({ trueEventOnly: !!checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Has Full Hints</Label>
-                  <Switch
-                    checked={!!state.hasFullHints}
-                    onCheckedChange={(checked) => update({ hasFullHints: !!checked })}
-                  />
-                </div>
+              {/* True Event tri-state */}
+              <div className="mb-4">
+                <Label className="mb-2 block text-sm font-medium">True Event</Label>
+                <RadioGroup
+                  value={state.realEventStatus ?? 'all'}
+                  onValueChange={(val) => update({ realEventStatus: val as 'all' | 'true' | 'fictional' })}
+                  className="flex space-x-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all" id="real-all" />
+                    <Label htmlFor="real-all">All</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="true" id="real-true" />
+                    <Label htmlFor="real-true">True</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="fictional" id="real-fictional" />
+                    <Label htmlFor="real-fictional">Fictional</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {/* Has Full Hints toggle */}
+              <div className="flex items-center justify-between mb-6">
+                <Label className="text-sm">Has Full Hints</Label>
+                <Switch
+                  checked={!!state.hasFullHints}
+                  onCheckedChange={(checked) => update({ hasFullHints: !!checked })}
+                />
               </div>
 
               {onClear && (
