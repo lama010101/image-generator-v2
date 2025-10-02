@@ -7,6 +7,7 @@ const Navigation = () => {
   const location = useLocation();
 
   const navItems = [
+    { path: "/reve", label: "REVE", icon: Activity },
     { path: "/", label: "Prompts", icon: List },
     { path: "/gallery", label: "Gallery", icon: Image },
   ];

@@ -1,0 +1,322 @@
+.reve-app {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.reve-app__header {
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(14, 165, 233, 0.18));
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 25px 40px rgba(15, 23, 42, 0.25);
+}
+
+.reve-app__header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.03em;
+}
+
+.reve-app__header p {
+  color: #94a3b8;
+  margin: 0;
+}
+
+.reve-app__content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem;
+}
+
+.reve-panel {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(18px);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 25px 45px rgba(2, 6, 23, 0.45);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reve-panel h2 {
+  font-size: 1.5rem;
+  margin: 0;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #bfdbfe;
+}
+
+.reve-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reve-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reve-form__field span {
+  font-weight: 600;
+  color: #cbd5f5;
+}
+
+.reve-form__field textarea,
+.reve-form__field select {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  color: #e2e8f0;
+  font-size: 1rem;
+  resize: vertical;
+}
+
+.reve-form__field textarea:focus,
+.reve-form__field select:focus {
+  outline: none;
+  border-color: rgba(14, 165, 233, 0.7);
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+}
+
+.reve-form__field small {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-top: -0.25rem;
+}
+
+.reve-form__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.reve-form__submit {
+  background: linear-gradient(135deg, #6366f1, #22d3ee);
+  color: #0f172a;
+  font-weight: 700;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reve-form__submit:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.reve-form__submit:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 35px rgba(99, 102, 241, 0.5);
+}
+
+.reve-form__error {
+  color: #f87171;
+  margin: 0;
+  font-weight: 500;
+}
+
+.reve-result {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.reve-result__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1.5rem;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1.25rem;
+  border-radius: 18px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  font-size: 0.95rem;
+}
+
+.reve-result__preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(226, 232, 240, 0.15);
+  border-radius: 18px;
+  padding: 1.25rem;
+}
+
+.reve-result__preview img {
+  width: 100%;
+  border-radius: 12px;
+  object-fit: contain;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.reve-result__actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.reve-download,
+.reve-secondary,
+.reve-history__actions button {
+  border-radius: 999px;
+  border: none;
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reve-download {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.9), rgba(45, 212, 191, 0.9));
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.reve-secondary {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+}
+
+.reve-secondary:hover {
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.reve-hint {
+  color: #38bdf8;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.reve-result__details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.reve-result__section {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 16px;
+  padding: 1.25rem;
+}
+
+.reve-result__section h3 {
+  margin-top: 0;
+  font-size: 1.1rem;
+  color: #cbd5f5;
+}
+
+.reve-result__section pre {
+  margin: 0;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 12px;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+
+.reve-history {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reve-history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reve-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.reve-history__item {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reve-history__item--active {
+  border-color: rgba(99, 102, 241, 0.8);
+  box-shadow: 0 18px 35px rgba(99, 102, 241, 0.25);
+}
+
+.reve-history__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.reve-history__prompt {
+  margin: 0;
+  color: #cbd5f5;
+  white-space: pre-wrap;
+}
+
+.reve-history__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+@media (max-width: 1024px) {
+  .reve-app__content {
+    grid-template-columns: 1fr;
+  }
+
+  .reve-panel {
+    padding: 1.75rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .reve-app__header h1 {
+    font-size: 2rem;
+  }
+
+  .reve-panel {
+    padding: 1.5rem;
+  }
+
+  .reve-form__row {
+    grid-template-columns: 1fr;
+  }
+
+  .reve-result__meta {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .reve-result__actions {
+    width: 100%;
+    justify-content: center;
+  }
+}

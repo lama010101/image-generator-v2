@@ -1,109 +1,59 @@
-# Historify Image Generator
+# REVE Image Generator
 
-## Project Overview
+## Overview
 
-This project is an AI image generation application that integrates with the Runware API for creating AI-generated images based on text prompts. The application includes a fallback demo mode when API keys are not configured, making it suitable for both development and production environments.
+This project now focuses on a standalone REVE generator experience. The `/` route renders `ReveGeneratorPage`, a full-screen layout for crafting prompts, submitting generation requests to the REVE API, and reviewing responses with rich metadata.
 
-**URL**: https://lovable.dev/projects/f4f9351b-4257-43c7-8f9a-48b4afea8294
+## Key Features
 
-## Features
-
-- **AI Image Generation**: Generate images from text prompts using the Runware API
-- **Fallback Demo Mode**: Automatically uses placeholder images when API keys are not available
-- **Environment Configuration**: Easy setup with .env.local template
-- **Project Management**: Track development progress and environment health
-- **Type-Safe Settings**: Runtime-safe environment variable access
+- **Direct REVE integration** via `generateImage()` in `src/services/reveClient.ts`.
+- **Local development history** stored in `localStorage` (dev mode only) through `useReveGenerator()`.
+- **Configurable request form** with preset aspect ratios and REVE model versions.
+- **Detailed response viewer** including headers, payload snapshot, and download/copy helpers.
 
 ## Environment Setup
 
-To use the image generation features, you need to set up your environment variables:
+Create `.env.local` with the following variables:
 
-1. Create a `.env.local` file in the project root (or copy from the template)
-2. Add your Runware API key:
-   ```
-   VITE_RUNWARE_API_KEY=your_api_key_here
-   ```
-3. Add your Supabase configuration:
-   ```
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   SUPABASE_URL=your_supabase_url
-   ```
+```bash
+VITE_REVE_API_KEY=your_reve_api_key
+VITE_REVE_API_BASE=https://api.reve.com
+VITE_REVE_ENDPOINT_PATH=/v1/image/create
+VITE_REVE_ACCEPT=application/json
+```
 
-## API Integration
+`VITE_REVE_API_BASE`, `VITE_REVE_ENDPOINT_PATH`, and `VITE_REVE_ACCEPT` have sensible defaults (`https://api.reve.com`, `/v1/image/create`, `application/json` respectively). Override them for non-standard deployments.
 
-The application uses the following services:
+## Running the App
 
-- **Runware API**: For AI image generation
-- **Supabase**: For storing image metadata and project tasks
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/f4f9351b-4257-43c7-8f9a-48b4afea8294) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Navigate to `http://localhost:5173/` to access the generator UI. Generation history persists only when `import.meta.env.DEV` is true so production builds do not store sensitive data locally.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Testing
 
-**Use GitHub Codespaces**
+Unit tests cover the REVE client behaviour. Run:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+npm test
+```
 
-## What technologies are used for this project?
+The test suite validates JSON handling, binary fallback for non-JSON responses, and error propagation.
 
-This project is built with:
+## File Structure Highlights
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-- Supabase (for backend storage)
-- Axios (for API requests)
-- Zod (for runtime type validation)
-- React Query (for data fetching and caching)
+- `src/types/reve.ts` – shared types for payloads and responses.
+- `src/lib/settings.ts` – runtime-safe REVE configuration (`getReveConfig()`), while preserving legacy settings export.
+- `src/services/reveClient.ts` – low-level fetch wrapper for the REVE API.
+- `src/hooks/useReveGenerator.ts` – stateful hook encapsulating form management, history persistence, and derived values.
+- `src/pages/ReveGenerator.tsx` – top-level page implementation.
+- `src/pages/ReveGenerator.css` & `src/App.css` – styling for the generator and layout shell.
 
-## How can I deploy this project?
+## Development Notes
 
-Simply open [Lovable](https://lovable.dev/projects/f4f9351b-4257-43c7-8f9a-48b4afea8294) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+- History is capped at 10 entries and stored under the `reve-image-history` key.
+- Copy-to-clipboard uses the Clipboard API; a message is surfaced when unavailable.
+- `getReveConfig()` logs validation failures in dev and throws in production to avoid silent misconfiguration.
