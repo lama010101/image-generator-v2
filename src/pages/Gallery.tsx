@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CalendarDays, MapPin, Eye, Zap, Loader2, FileImage } from "lucide-react";
-import { formatFileSize, getImageSize, ImageSizeInfo } from "@/utils/imageUtils";
 
 interface Image {
   id: string;
@@ -17,6 +16,8 @@ interface Image {
   description: string | null;
   image_url: string | null;
   optimized_image_url: string | null;
+  mobile_image_url: string | null;
+  thumbnail_image_url: string | null;
   country: string | null;
   year: number | null;
   model: string | null;
@@ -35,6 +36,10 @@ interface Image {
   real_event: boolean | null;
   has_full_hints: boolean | null;
   ready: boolean | null;
+  aspect_ratio: string | null;
+  accuracy_score: Record<string, any> | null;
+  desktop_size_kb: number | null;
+  original_size_kb: number | null;
 }
 
 // Local storage key for cached images
@@ -42,40 +47,8 @@ const LOCAL_IMAGES_KEY = 'historify_cached_images';
 
 // Component to display image size information
 const ImageSizeDisplay = ({ image }: { image: Image }) => {
-  const [sizes, setSizes] = useState<ImageSizeInfo>({ originalSize: null, optimizedSize: null });
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchSizes = async () => {
-      try {
-        setIsLoading(true);
-        const [originalSize, optimizedSize] = await Promise.all([
-          image.image_url ? getImageSize(image.image_url) : Promise.resolve(null),
-          image.optimized_image_url ? getImageSize(image.optimized_image_url) : Promise.resolve(null)
-        ]);
-        
-        setSizes({
-          originalSize: originalSize ? formatFileSize(originalSize) : null,
-          optimizedSize: optimizedSize ? formatFileSize(optimizedSize) : null
-        });
-      } catch (error) {
-        console.error('Error fetching image sizes:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchSizes();
-  }, [image.image_url, image.optimized_image_url]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading sizes...
-      </div>
-    );
-  }
+  const originalSize = typeof image.original_size_kb === 'number' ? `${image.original_size_kb} KB` : null;
+  const optimizedSize = typeof image.desktop_size_kb === 'number' ? `${image.desktop_size_kb} KB` : null;
 
   return (
     <div className="space-y-2 text-sm">
@@ -84,19 +57,19 @@ const ImageSizeDisplay = ({ image }: { image: Image }) => {
         <span className="font-medium">Image Sizes:</span>
       </div>
       <div className="pl-6 space-y-1">
-        {sizes.originalSize && (
+        {originalSize && (
           <div className="flex justify-between">
             <span className="text-muted-foreground">Original:</span>
-            <span className="font-mono">{sizes.originalSize}</span>
+            <span className="font-mono">{originalSize}</span>
           </div>
         )}
-        {sizes.optimizedSize && (
+        {optimizedSize && (
           <div className="flex justify-between">
             <span className="text-muted-foreground">Optimized:</span>
-            <span className="font-mono">{sizes.optimizedSize}</span>
+            <span className="font-mono">{optimizedSize}</span>
           </div>
         )}
-        {!sizes.originalSize && !sizes.optimizedSize && (
+        {!originalSize && !optimizedSize && (
           <span className="text-muted-foreground text-sm">Size information not available</span>
         )}
       </div>
@@ -442,41 +415,37 @@ const filteredImages = images || [];
                       </div>
 
                       <div className="grid grid-cols-2 gap-4 text-sm">
-                        {image.country && (
-                          <div>
-                            <div className="flex items-center gap-1 font-medium">
-                              <MapPin className="h-4 w-4" />
-                              Location
-                            </div>
-                            <p className="text-muted-foreground">{image.country}</p>
+                        <div>
+                          <div className="flex items-center gap-1 font-medium">
+                            <MapPin className="h-4 w-4" />
+                            Location
                           </div>
-                        )}
-                        {image.year && (
-                          <div>
-                            <div className="flex items-center gap-1 font-medium">
-                              <CalendarDays className="h-4 w-4" />
-                              Year
-                            </div>
-                            <p className="text-muted-foreground">{image.year}</p>
+                          <p className="text-muted-foreground">{image.country ?? 'Not specified'}</p>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1 font-medium">
+                            <CalendarDays className="h-4 w-4" />
+                            Year
                           </div>
-                        )}
+                          <p className="text-muted-foreground">{image.year ?? 'Not specified'}</p>
+                        </div>
                         <div className="col-span-2">
                           <div className="border-t border-border pt-4">
                             <ImageSizeDisplay image={image} />
                           </div>
                         </div>
-                        {image.width && image.height && (
+                        {image.width && image.height ? (
                           <div>
                             <div className="font-medium">Dimensions</div>
                             <p className="text-muted-foreground">{image.width} × {image.height}</p>
                           </div>
-                        )}
-                        {image.model && (
+                        ) : null}
+                        {image.model ? (
                           <div>
                             <div className="font-medium">Model</div>
                             <p className="text-muted-foreground">{image.model}</p>
                           </div>
-                        )}
+                        ) : null}
                         {typeof image.cfg_scale === 'number' && (
                           <div>
                             <div className="font-medium">CFG Scale</div>
@@ -489,7 +458,43 @@ const filteredImages = images || [];
                             <p className="text-muted-foreground">{image.steps}</p>
                           </div>
                         )}
+                        {image.aspect_ratio && (
+                          <div>
+                            <div className="font-medium">Aspect Ratio</div>
+                            <p className="text-muted-foreground">{image.aspect_ratio}</p>
+                          </div>
+                        )}
+                        {image.cost !== null && (
+                          <div>
+                            <div className="font-medium">Cost</div>
+                            <p className="text-muted-foreground">{image.cost}</p>
+                          </div>
+                        )}
                       </div>
+
+                      {image.accuracy_score?.source === 'reve' && (
+                        <div className="border border-dashed border-border rounded-lg p-4 space-y-2">
+                          <h4 className="font-semibold text-sm">REVE Details</h4>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <div className="font-medium">Request ID</div>
+                              <p className="text-muted-foreground">{image.accuracy_score.request_id ?? '—'}</p>
+                            </div>
+                            <div>
+                              <div className="font-medium">Credits Used</div>
+                              <p className="text-muted-foreground">{image.cost ?? image.accuracy_score.credits_used ?? '—'}</p>
+                            </div>
+                            <div>
+                              <div className="font-medium">Credits Remaining</div>
+                              <p className="text-muted-foreground">{image.accuracy_score.credits_remaining ?? '—'}</p>
+                            </div>
+                            <div>
+                              <div className="font-medium">Source</div>
+                              <p className="text-muted-foreground">{image.accuracy_score.source}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="text-xs text-muted-foreground">
                         Created: {new Date(image.created_at).toLocaleString()}
