@@ -1,10 +1,15 @@
+import { useState } from 'react'
 import './ReveGenerator.css'
 import { useReveGenerator } from '@/hooks/useReveGenerator'
+import { saveReveImage } from '@/services/reveImageSaver'
 
 const ASPECT_RATIOS = ['3:2', '16:9', '4:3', '1:1', '9:16', '2:3', '3:4'] as const
 const VERSIONS = ['latest', 'reve-create@20250915'] as const
 
 export function ReveGeneratorPage() {
+  const [isSavingImage, setIsSavingImage] = useState(false)
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null)
+
   const {
     form,
     setFormValue,
@@ -17,6 +22,38 @@ export function ReveGeneratorPage() {
     handlers: { selectHistory, removeHistory, clearHistory, copyBase64 },
     computed: { imageUrl, imageSizeKb, formatTimestamp },
   } = useReveGenerator()
+
+  const handleSaveImage = async () => {
+    if (!result) return
+
+    setIsSavingImage(true)
+    setSaveFeedback(null)
+
+    try {
+      const saveResult = await saveReveImage({
+        imageBase64: result.image,
+        prompt: result.payload?.prompt ?? form.prompt,
+        aspectRatio: result.payload?.aspect_ratio ?? form.aspect_ratio,
+        version: result.version,
+        requestId: result.request_id,
+        creditsUsed: result.credits_used,
+        creditsRemaining: result.credits_remaining,
+        title: result.payload?.prompt?.slice(0, 60) ?? form.prompt.slice(0, 60),
+      })
+
+      if (!saveResult.success) {
+        throw new Error(saveResult.error ?? 'Unknown error')
+      }
+
+      setSaveFeedback('Image saved to gallery.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save image.'
+      setSaveFeedback(message)
+    } finally {
+      setIsSavingImage(false)
+      setTimeout(() => setSaveFeedback(null), 4000)
+    }
+  }
 
   return (
     <div className="reve-app">
@@ -139,8 +176,20 @@ export function ReveGeneratorPage() {
                     <button type="button" className="reve-secondary" onClick={copyBase64}>
                       Copy base64
                     </button>
+                    <button
+                      type="button"
+                      className="reve-secondary"
+                      disabled={isSavingImage}
+                      onClick={handleSaveImage}
+                    >
+                      {isSavingImage ? 'Saving…' : 'Save'}
+                    </button>
                   </div>
-                  {copyFeedback && <p className="reve-hint">{copyFeedback}</p>}
+                  {(copyFeedback || saveFeedback) && (
+                    <p className="reve-hint">
+                      {saveFeedback ?? copyFeedback}
+                    </p>
+                  )}
                 </div>
               )}
 
