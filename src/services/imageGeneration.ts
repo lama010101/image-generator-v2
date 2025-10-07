@@ -40,6 +40,27 @@ const blobToDataUrl = async (blob: Blob): Promise<string> => {
   });
 };
 
+const DEFAULT_WIDTH = 1344;
+const DEFAULT_HEIGHT = 576;
+const DEFAULT_ASPECT_RATIO = '21:9';
+const DEFAULT_IMAGE_TYPE: GenerationRequest['imageType'] = 'webp';
+
+const computeAspectRatio = (
+  width?: number | null,
+  height?: number | null
+): string | null => {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const normalizedWidth = Math.round(Math.abs(width));
+  const normalizedHeight = Math.round(Math.abs(height));
+  const divisor = gcd(normalizedWidth, normalizedHeight);
+
+  return `${normalizedWidth / divisor}:${normalizedHeight / divisor}`;
+};
+
 export const generateImage = async (request: GenerationRequest): Promise<GenerationResult> => {
   try {
     console.log('Starting image generation for prompt:', request.prompt);
@@ -122,6 +143,12 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     let originalImageUrl = "";
     const modelSel = request.model ?? "runware:100@1";
 
+    const targetWidth = request.width ?? DEFAULT_WIDTH;
+    const targetHeight = request.height ?? DEFAULT_HEIGHT;
+    const targetImageType = request.imageType ?? DEFAULT_IMAGE_TYPE;
+    const targetAspectRatio =
+      computeAspectRatio(targetWidth, targetHeight) ?? DEFAULT_ASPECT_RATIO;
+
     if (modelSel.startsWith("fal-ai/")) {
       // --- Use Fal.ai service ---
       const { generateImageFal } = await import("@/services/falServiceQueue");
@@ -134,8 +161,13 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       const falRes = await generateImageFal({
         prompt: request.prompt,
         negative_prompt: request.negative_prompt,
-        image_size: request.width && request.height ? `${request.width}x${request.height}` : undefined,
-        output_format: request.imageType === 'png' ? 'png' : request.imageType === 'jpg' ? 'jpeg' : undefined,
+        image_size: `${targetWidth}x${targetHeight}`,
+        output_format:
+          targetImageType === 'png'
+            ? 'png'
+            : targetImageType === 'jpg'
+              ? 'jpeg'
+              : undefined,
         model: modelSel,
       });
 
@@ -153,12 +185,12 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       const runwareRes = await generateImageRunware({
         prompt: request.prompt,
         negative_prompt: request.negative_prompt,
-        width: request.width,
-        height: request.height,
+        width: targetWidth,
+        height: targetHeight,
         model: modelSel,
         steps: request.steps,
         cfgScale: request.cfgScale,
-        imageType: request.imageType,
+        imageType: targetImageType,
       });
 
       if (!runwareRes.success || !runwareRes.imageUrl) {
@@ -192,9 +224,9 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
     // Generate variants in the selected format (desktop, mobile, thumbnail)
     const { generateMultiFormatVariants } = await import("@/services/imageFormatService");
-    variants = await generateMultiFormatVariants(originalBlob, request.imageType || 'webp');
+    variants = await generateMultiFormatVariants(originalBlob, targetImageType);
 
-      const imageType = request.imageType || 'webp';
+      const imageType = targetImageType;
       const fileExtension = imageType === 'jpg' ? 'jpg' : imageType;
       const mimeType = imageType === 'jpg' ? 'image/jpeg' : `image/${imageType}`;
 
@@ -235,7 +267,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         }
 
         if (originalBlob) {
-          const imageType = request.imageType || 'webp';
+          const imageType = targetImageType;
           const dataUrl = await blobToDataUrl(originalBlob);
           originalImageUrl = dataUrl;
           optimizedImageUrl = dataUrl;
@@ -245,8 +277,8 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
           variants.desktop.size = originalBlob.size;
           variants.mobile.size = originalBlob.size;
           variants.thumbnail.size = originalBlob.size;
-          const fallbackWidth = request.width ?? variants.desktop.width ?? 0;
-          const fallbackHeight = request.height ?? variants.desktop.height ?? 0;
+          const fallbackWidth = targetWidth;
+          const fallbackHeight = targetHeight;
           variants.desktop.width = fallbackWidth;
           variants.desktop.height = fallbackHeight;
           variants.mobile.width = fallbackWidth;
@@ -265,6 +297,11 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
     // Step 3: Update image record with both image URLs
     // Update local imageData object
+    const finalWidth = variants.desktop.width || targetWidth;
+    const finalHeight = variants.desktop.height || targetHeight;
+    const finalAspectRatio =
+      computeAspectRatio(finalWidth, finalHeight) ?? targetAspectRatio;
+
     imageData.image_url = originalImageUrl;
     imageData.desktop_image_url = desktopURL;
     imageData.mobile_image_url = mobileURL;
@@ -274,8 +311,10 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     imageData.original_size_kb = Math.round(variants.originalSize / 1024);
     imageData.optimized_image_url = optimizedImageUrl;
     imageData.ready = true;
-    imageData.width = variants.desktop.width;
-    imageData.height = variants.desktop.height;
+    imageData.width = finalWidth;
+    imageData.height = finalHeight;
+    imageData.aspect_ratio = finalAspectRatio;
+    imageData.output_format = targetImageType;
     imageData.model = request.model || 'runware';
     imageData.cfg_scale = request.cfgScale;
     imageData.steps = request.steps;
@@ -294,8 +333,10 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
           mobile_size_kb: Math.round(variants.mobile.size / 1024),
           original_size_kb: Math.round(variants.originalSize / 1024),
           ready: true,
-          width: variants.desktop.width,
-          height: variants.desktop.height,
+          width: finalWidth,
+          height: finalHeight,
+          aspect_ratio: finalAspectRatio,
+          output_format: targetImageType,
           cfg_scale: request.cfgScale,
           steps: request.steps,
           model: request.model || 'runware'

@@ -27,7 +27,11 @@ interface GenerationSettingsPanelProps {
 }
 
 const defaultModels = [
-  { label: "Runware BFL 2", value: "bfl:2@1" },
+  { label: "BFL FLUX.1 Pro (Text-to-Image)", value: "bfl:1@1" },
+  { label: "BFL FLUX.1.1 Pro (Text-to-Image)", value: "bfl:2@1" },
+  { label: "BFL FLUX.1.1 Pro Ultra (Hi-Res Text-to-Image)", value: "bfl:2@2" },
+  { label: "BFL FLUX Kontext Pro", value: "bfl:3@1" },
+  { label: "BFL FLUX Kontext Max", value: "bfl:4@1" },
   { label: "Runware 100", value: "runware:100@1" },
   { label: "RunDiffusion 130", value: "rundiffusion:130@100" },
   { label: "Imagen 4 (FAL)", value: "fal-ai/imagen4/preview" },
@@ -35,16 +39,57 @@ const defaultModels = [
   { label: "SD Turbo (FAL)", value: "fal-ai/sd-turbo" },
 ];
 
+const modelPresets: Record<string, Partial<GenerationSettings>> = {
+  "bfl:1@1": { width: 1024, height: 1024, steps: 40, cfgScale: 2.5 },
+  "bfl:2@1": { width: 1280, height: 720 },
+  "bfl:2@2": { width: 2752, height: 1536 },
+  "bfl:3@1": { width: 1392, height: 752 },
+  "bfl:4@1": { width: 1024, height: 1024 },
+};
+
+const DEFAULT_WIDTH = 576;
+const DEFAULT_HEIGHT = 1344;
+const DEFAULT_IMAGE_TYPE: GenerationSettings['imageType'] = 'webp';
+
 export const GenerationSettingsPanel: React.FC<GenerationSettingsPanelProps> = ({ settings, onSettingsChange }) => {
 
   const update = (partial: Partial<GenerationSettings>) => {
     onSettingsChange({ ...settings, ...partial });
   };
 
+  const handleModelChange = (val: string) => {
+    const preset = modelPresets[val];
+    if (preset) {
+      onSettingsChange({
+        ...settings,
+        ...preset,
+        model: val,
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
+        imageType: DEFAULT_IMAGE_TYPE,
+      });
+    } else {
+      onSettingsChange({
+        ...settings,
+        model: val,
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
+        imageType: DEFAULT_IMAGE_TYPE,
+      });
+    }
+  };
+
+  const [accordionValue, setAccordionValue] = React.useState<string>('settings');
+
   return (
     <Card className="mb-6 w-full max-w-sm">
       <CardHeader className="p-0">
-        <Accordion type="single" collapsible defaultValue="settings">
+        <Accordion
+          type="single"
+          collapsible
+          value={accordionValue}
+          onValueChange={(val) => setAccordionValue(val ?? '')}
+        >
           <AccordionItem value="settings" className="border-0">
             <AccordionTrigger className="px-4">Generation Settings</AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
@@ -52,7 +97,7 @@ export const GenerationSettingsPanel: React.FC<GenerationSettingsPanelProps> = (
                 {/* Model */}
                 <div className="space-y-2">
                   <Label htmlFor="model">Model</Label>
-                  <Select value={settings.model} onValueChange={(val) => update({ model: val })}>
+                  <Select value={settings.model} onValueChange={handleModelChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>

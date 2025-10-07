@@ -42,6 +42,36 @@ interface Image {
   original_size_kb: number | null;
 }
 
+const MODEL_NAME_MAP: Record<string, string> = {
+  "bfl:1@1": "BFL FLUX1 Pro",
+  "bfl:2@1": "BFL FLUX1.1 Pro",
+  "bfl:2@2": "BFL FLUX1.1 Pro Ultra",
+  "bfl:3@1": "BFL FLUX Kontext Pro",
+  "bfl:4@1": "BFL FLUX Kontext Max",
+  "runware:100@1": "Runware 100",
+  "rundiffusion:130@100": "RunDiffusion 130",
+  "fal-ai/imagen4/preview": "Imagen 4 (FAL)",
+  "fal-ai/fast-sdxl": "Fast SDXL (FAL)",
+  "fal-ai/sd-turbo": "SD Turbo (FAL)",
+  "runware": "Runware",
+};
+
+const getModelDisplayName = (model?: string | null): string | null => {
+  if (!model) return null;
+  if (MODEL_NAME_MAP[model]) return MODEL_NAME_MAP[model];
+  if (model.startsWith("reve:")) {
+    const version = model.split(":")[1] ?? "";
+    return `REVE ${version.toUpperCase()}`.trim();
+  }
+  return model;
+};
+
+const formatCostDisplay = (cost: number | null): string => {
+  if (cost === null || cost === undefined) return "—";
+  const formatted = Number.isInteger(cost) ? cost.toString() : cost.toFixed(2);
+  return `${formatted} credits`;
+};
+
 // Local storage key for cached images
 const LOCAL_IMAGES_KEY = 'historify_cached_images';
 
@@ -345,9 +375,9 @@ const filteredImages = images || [];
                         )}
                       </div>
                       <div className="aspect-square bg-muted rounded-t-lg overflow-hidden">
-                        {image.optimized_image_url || image.image_url ? (
+                        {image.optimized_image_url || image.image_url || image.binary ? (
                           <img
-                            src={image.optimized_image_url || image.image_url || ''}
+                            src={image.optimized_image_url || image.image_url || image.binary || ''}
                             alt={image.title || 'Generated image'}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                             onError={(e) => {
@@ -365,7 +395,7 @@ const filteredImages = images || [];
                         <h3 className="font-medium text-sm line-clamp-2 mb-2">
                           {image.title || 'Untitled'}
                         </h3>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                           <div className="flex items-center gap-1">
                             <CalendarDays className="h-3 w-3" />
                             {new Date(image.created_at).toLocaleDateString()}
@@ -374,6 +404,24 @@ const filteredImages = images || [];
                             <Badge variant="outline" className="text-xs">
                               {image.model}
                             </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-end justify-between text-xs">
+                          <div className="flex flex-col text-left">
+                            <span className="text-muted-foreground uppercase tracking-wide">Price</span>
+                            <span className="text-sm font-semibold text-foreground">
+                              {formatCostDisplay(image.cost)}
+                            </span>
+                          </div>
+                          {image.model && (
+                            <div className="flex flex-col items-end gap-1 text-right">
+                              <Badge variant="outline" className="text-xs">
+                                {image.model}
+                              </Badge>
+                              <span className="text-[11px] text-muted-foreground">
+                                {getModelDisplayName(image.model)}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -386,9 +434,9 @@ const filteredImages = images || [];
                   </DialogHeader>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="space-y-4">
-                      {image.optimized_image_url || image.image_url ? (
+                      {image.optimized_image_url || image.image_url || image.binary ? (
                         <img
-                          src={image.optimized_image_url || image.image_url || ''}
+                          src={image.optimized_image_url || image.image_url || image.binary || ''}
                           alt={image.title || 'Generated image'}
                           className="w-full rounded-lg"
                           onError={(e) => {

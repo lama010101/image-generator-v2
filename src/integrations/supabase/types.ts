@@ -309,6 +309,7 @@ export type Database = {
           date: string | null
           description: string | null
           desktop_image_url: string | null
+          binary: string | null
           desktop_size_kb: number | null
           exact_date: string | null
           gps_coordinates: string | null
@@ -375,6 +376,7 @@ export type Database = {
           date?: string | null
           description?: string | null
           desktop_image_url?: string | null
+          binary?: string | null
           desktop_size_kb?: number | null
           exact_date?: string | null
           gps_coordinates?: string | null
@@ -441,6 +443,7 @@ export type Database = {
           date?: string | null
           description?: string | null
           desktop_image_url?: string | null
+          binary?: string | null
           desktop_size_kb?: number | null
           exact_date?: string | null
           gps_coordinates?: string | null

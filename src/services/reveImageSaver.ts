@@ -105,17 +105,15 @@ export const saveReveImage = async (params: ReveSaveParams): Promise<ReveSaveRes
       blobToDataUrl(variants.thumbnail.blob),
     ])
 
+    const binaryData = originalDataUrl
+
     const imageRecord: Record<string, any> = {
       id: imageId,
       prompt,
       title: title?.trim() || `REVE image ${requestId || imageId}`,
       description: description ?? null,
       aspect_ratio: aspectRatio,
-      image_url: originalDataUrl,
-      optimized_image_url: desktopDataUrl,
-      desktop_image_url: desktopDataUrl,
-      mobile_image_url: mobileDataUrl,
-      thumbnail_image_url: thumbnailDataUrl,
+      binary: binaryData,
       desktop_size_kb: Math.round(variants.desktop.size / 1024),
       mobile_size_kb: Math.round(variants.mobile.size / 1024),
       original_size_kb: Math.round(variants.originalSize / 1024),

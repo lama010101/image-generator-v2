@@ -73,8 +73,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     if (state.confidenceRange) setLocalConfidenceRange(state.confidenceRange);
   }, [state.confidenceRange]);
 
-  // Control the accordion to keep it open across re-renders
-  const [accordionValue, setAccordionValue] = React.useState<string>('filters');
+  // Control the accordion to keep it open across re-renders (collapsed by default)
+  const [accordionValue, setAccordionValue] = React.useState<string>('');
 
   return (
     <Card className="mb-6 w-full max-w-sm">
