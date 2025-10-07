@@ -25,6 +25,21 @@ export interface GenerationResult {
   error?: string;
 }
 
+const blobToDataUrl = async (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to convert blob to data URL'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Failed to read blob as data URL'));
+    reader.readAsDataURL(blob);
+  });
+};
+
 export const generateImage = async (request: GenerationRequest): Promise<GenerationResult> => {
   try {
     console.log('Starting image generation for prompt:', request.prompt);
@@ -103,16 +118,6 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
     console.log('Created image record:', imageData.id);
 
-    // Mark the originating prompt as used
-    try {
-      await supabase
-        .from('prompts')
-        .update({ used: true })
-        .eq('id', request.promptId);
-    } catch (err) {
-      console.warn('Warning: Failed to mark prompt as used:', err);
-    }
-
     // Step 2: Generate image via either Runware or FAL based on selected model
     let originalImageUrl = "";
     const modelSel = request.model ?? "runware:100@1";
@@ -175,6 +180,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       thumbnail: { size: 0, width: 0, height: 0 },
     };
 
+    let originalBlob: Blob | null = null;
     try {
       // Dynamically import only in browser / client runtime to keep bundle size small.
       const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
@@ -182,7 +188,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
       // Fetch the remote image as a Blob
       const imageResponse = await fetch(originalImageUrl);
-      const originalBlob = await imageResponse.blob();
+      originalBlob = await imageResponse.blob();
 
     // Generate variants in the selected format (desktop, mobile, thumbnail)
     const { generateMultiFormatVariants } = await import("@/services/imageFormatService");
@@ -221,9 +227,40 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
       console.log(`Variant generation complete. Desktop: ${variants.desktop.size} bytes, Mobile: ${variants.mobile.size} bytes, Thumbnail: ${variants.thumbnail.size} bytes`);
     } catch (error) {
-      console.warn("Image optimization failed, using original image only:", error);
-      // If optimization fails, continue with the original image URL only.
-      optimizedImageUrl = originalImageUrl;
+      console.warn("Image optimization failed, attempting inline fallback:", error);
+      try {
+        if (!originalBlob) {
+          const response = await fetch(originalImageUrl);
+          originalBlob = await response.blob();
+        }
+
+        if (originalBlob) {
+          const imageType = request.imageType || 'webp';
+          const dataUrl = await blobToDataUrl(originalBlob);
+          originalImageUrl = dataUrl;
+          optimizedImageUrl = dataUrl;
+          desktopURL = dataUrl;
+          mobileURL = dataUrl;
+          thumbnailURL = dataUrl;
+          variants.desktop.size = originalBlob.size;
+          variants.mobile.size = originalBlob.size;
+          variants.thumbnail.size = originalBlob.size;
+          const fallbackWidth = request.width ?? variants.desktop.width ?? 0;
+          const fallbackHeight = request.height ?? variants.desktop.height ?? 0;
+          variants.desktop.width = fallbackWidth;
+          variants.desktop.height = fallbackHeight;
+          variants.mobile.width = fallbackWidth;
+          variants.mobile.height = fallbackHeight;
+          variants.thumbnail.width = fallbackWidth;
+          variants.thumbnail.height = fallbackHeight;
+          variants.originalSize = originalBlob.size;
+        } else {
+          optimizedImageUrl = originalImageUrl;
+        }
+      } catch (dataUrlError) {
+        console.warn("Inline fallback failed, using original image only:", dataUrlError);
+        optimizedImageUrl = originalImageUrl;
+      }
     }
 
     // Step 3: Update image record with both image URLs

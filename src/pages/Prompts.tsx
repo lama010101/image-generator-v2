@@ -1,7 +1,7 @@
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +22,7 @@ interface Prompt {
   title: string | null;
   description: string | null;
   prompt: string;
+  negative_prompt: string | null;
   country: string | null;
   year: number | null;
   has_full_hints: boolean | null;
@@ -29,7 +30,6 @@ interface Prompt {
   approx_people_count: number | null;
   confidence: number | null;
   theme: string | null;
-  used: boolean | null;
   real_event: boolean | null;
   images?: { id: string }[]; // joined images to infer usage
 }
@@ -44,11 +44,11 @@ interface GenerationSettings {
 }
 
 const defaultSettings: GenerationSettings = {
-  model: "runware:100@1", // default Runware model (valid)
+  model: "bfl:2@1", // default Runware BFL model
   steps: 20,
   cfgScale: 2,
-  width: 1024,
-  height: 1024,
+  width: 1344,
+  height: 576,
   imageType: "webp",
 };
 
@@ -71,15 +71,25 @@ const Prompts = () => {
   const { data: totalCountData } = useQuery({
     queryKey: ['prompts-count', filters, searchTerm],
     queryFn: async () => {
+      const selectForCount =
+        filters.usedStatus === 'used'
+          ? 'id, images!inner(id)'
+          : filters.usedStatus === 'unused'
+            ? 'id, images(id)'
+            : 'id';
+
       let query = supabase
         .from('prompts')
-        .select('*', { count: 'exact', head: true });
+        .select(selectForCount, { count: 'exact', head: true });
+
       if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
       if (filters.theme) query = query.eq('theme', filters.theme);
       if (filters.location) query = query.eq('country', filters.location);
       if (filters.dateCreatedRange) {
         const [fromTs, toTs] = filters.dateCreatedRange;
-        query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
+        query = query
+          .gte('created_at', new Date(fromTs).toISOString())
+          .lte('created_at', new Date(toTs).toISOString());
       }
       if (filters.numberPeopleRange) {
         const [minP, maxP] = filters.numberPeopleRange;
@@ -93,30 +103,35 @@ const Prompts = () => {
       if (filters.realEventStatus === 'true') query = query.eq('real_event', true);
       else if (filters.realEventStatus === 'fictional') query = query.eq('real_event', false);
       if (filters.hasFullHints) query = query.eq('has_full_hints', true);
-      if (filters.usedStatus === 'used') query = query.eq('used', true);
-      else if (filters.usedStatus === 'unused') query = query.is('used', null);
+      if (filters.usedStatus === 'unused') query = query.is('images', null);
+
       const { count, error } = await query;
       if (error) throw error;
       return count ?? 0;
     },
     staleTime: 30000,
     retry: false,
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const { data: prompts, isLoading, error } = useQuery({
     queryKey: ['prompts', page, pageSize, filters, searchTerm],
     queryFn: async () => {
+      const imageSelect = filters.usedStatus === 'used' ? 'images!inner(id)' : 'images(id)';
+
       let query = supabase
         .from('prompts')
-        .select('id, title, description, prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count, used, real_event, images(id)')
+        .select(`id, title, description, prompt, negative_prompt, country, year, has_full_hints, confidence, theme, celebrity, approx_people_count, real_event, ${imageSelect}`)
         .order('created_at', { ascending: false });
+
       if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
       if (filters.theme) query = query.eq('theme', filters.theme);
       if (filters.location) query = query.eq('country', filters.location);
       if (filters.dateCreatedRange) {
         const [fromTs, toTs] = filters.dateCreatedRange;
-        query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
+        query = query
+          .gte('created_at', new Date(fromTs).toISOString())
+          .lte('created_at', new Date(toTs).toISOString());
       }
       if (filters.numberPeopleRange) {
         const [minP, maxP] = filters.numberPeopleRange;
@@ -130,9 +145,10 @@ const Prompts = () => {
       if (filters.realEventStatus === 'true') query = query.eq('real_event', true);
       else if (filters.realEventStatus === 'fictional') query = query.eq('real_event', false);
       if (filters.hasFullHints) query = query.eq('has_full_hints', true);
-      if (filters.usedStatus === 'used') query = query.eq('used', true);
-      else if (filters.usedStatus === 'unused') query = query.is('used', null);
+      if (filters.usedStatus === 'unused') query = query.is('images', null);
+
       query = query.range(page * pageSize, (page + 1) * pageSize - 1);
+
       const { data, error } = await query;
       if (error) {
         console.error('Error fetching prompts:', error);
@@ -142,7 +158,7 @@ const Prompts = () => {
     },
     staleTime: 30000,
     retry: false,
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   // Selection helpers
@@ -165,7 +181,6 @@ const Prompts = () => {
     setBulkGenerating(true);
     // Sequential generation to avoid API throttling
     for (const prompt of filteredPrompts.filter(p => selectedIds.has(p.id))) {
-      // eslint-disable-next-line no-await-in-loop
       await handleGenerate(prompt, generationSettings);
     }
     setBulkGenerating(false);
@@ -281,7 +296,7 @@ const Prompts = () => {
         prompt: prompt.prompt,
         title: prompt.title || undefined,
         description: prompt.description || undefined,
-        negative_prompt: (prompt as any).negative_prompt || undefined,
+        negative_prompt: prompt.negative_prompt || undefined,
         model: settings.model,
         steps: settings.steps,
         cfgScale: settings.cfgScale,
@@ -376,7 +391,7 @@ const Prompts = () => {
   max={totalCountData && pageSize ? Math.max(1, Math.ceil(totalCountData / pageSize)) : 1}
   value={page+1}
   onChange={e => {
-    let val = Number(e.target.value);
+    const val = Number(e.target.value);
     if (!isNaN(val) && val >= 1 && totalCountData && pageSize && val <= Math.ceil(totalCountData / pageSize)) {
       setPage(val-1);
     }
@@ -498,7 +513,7 @@ const Prompts = () => {
                                 {typeof prompt.confidence === 'number' && (
                                   <Badge variant="outline" className="shrink-0">Confidence: {prompt.confidence}</Badge>
                                 )}
-                                {(prompt.used || (prompt.images && prompt.images.length > 0)) && (
+                                {(prompt.images && prompt.images.length > 0) && (
                                   <Badge variant="success" className="shrink-0">
                                     Used
                                   </Badge>

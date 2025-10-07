@@ -27,6 +27,7 @@ interface GenerationSettingsPanelProps {
 }
 
 const defaultModels = [
+  { label: "Runware BFL 2", value: "bfl:2@1" },
   { label: "Runware 100", value: "runware:100@1" },
   { label: "RunDiffusion 130", value: "rundiffusion:130@100" },
   { label: "Imagen 4 (FAL)", value: "fal-ai/imagen4/preview" },

@@ -105,18 +105,6 @@ export const saveReveImage = async (params: ReveSaveParams): Promise<ReveSaveRes
       blobToDataUrl(variants.thumbnail.blob),
     ])
 
-    let userId: string | undefined
-    try {
-      const { data } = await supabase.auth.getUser()
-      userId = data?.user?.id ?? undefined
-    } catch (authError) {
-      console.warn('Unable to fetch authenticated user for REVE save:', authError)
-    }
-
-    if (!userId) {
-      throw new Error('Authentication required to save images. Please sign in and try again.')
-    }
-
     const imageRecord: Record<string, any> = {
       id: imageId,
       prompt,
@@ -141,7 +129,6 @@ export const saveReveImage = async (params: ReveSaveParams): Promise<ReveSaveRes
         source: 'reve',
       },
       source_citation: 'REVE API',
-      user_id: userId,
       negative_prompt: null,
       prompt_id: null,
       cfg_scale: null,

@@ -37,26 +37,65 @@ export const generateImageRunware = async (
   }
 
   try {
-    // Determine desired output format. Default to JPG if not specified / unsupported.
-    const format = (req.imageType ?? 'jpg').toLowerCase();
-    const formatUpper = format === 'png' ? 'PNG' : format === 'webp' ? 'WEBP' : 'JPG';
-
-    const payload = [
-      {
-        taskType: "imageInference",
-        taskUUID: crypto.randomUUID(),
-        positivePrompt: req.prompt,
-        negativePrompt: req.negative_prompt || undefined,
-        outputType: "URL",
-        outputFormat: formatUpper,
-        width: req.width ?? 768,
-        height: req.height ?? 768,
-        steps: req.steps ?? 30,
-        CFGScale: req.cfgScale ?? 7,
-        model: req.model ?? "runware:101@1",
-        numberResults: 1
+    const sanitizeDimension = (value: number | undefined, fallback: number) => {
+      if (typeof value === "number" && Number.isFinite(value) && value >= 64) {
+        return value;
       }
-    ];
+      return fallback;
+    };
+
+    const sanitizePositiveNumber = (value: number | undefined, fallback: number) => {
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        return value;
+      }
+      return fallback;
+    };
+
+    const model = req.model ?? "bfl:2@1";
+    const width = sanitizeDimension(req.width, 1344);
+    const height = sanitizeDimension(req.height, 576);
+    const steps = sanitizePositiveNumber(req.steps, 20);
+    const cfgScale = sanitizePositiveNumber(req.cfgScale, 4);
+    const negativePrompt = req.negative_prompt?.trim();
+
+    const format = req.imageType?.toLowerCase();
+    const outputFormat = format === "png" ? "PNG" : format === "jpg" ? "JPG" : undefined;
+
+    const providerSettings = model.toLowerCase().startsWith("bfl")
+      ? {
+          bfl: {
+            promptUpsampling: false,
+            safetyTolerance: 2
+          }
+        }
+      : undefined;
+
+    const task: Record<string, unknown> = {
+      taskType: "imageInference",
+      taskUUID: crypto.randomUUID(),
+      positivePrompt: req.prompt,
+      outputType: "URL",
+      width,
+      height,
+      steps,
+      CFGScale: cfgScale,
+      model,
+      numberResults: 1
+    };
+
+    if (negativePrompt) {
+      task.negative_prompt = negativePrompt;
+    }
+
+    if (outputFormat) {
+      task.outputFormat = outputFormat;
+    }
+
+    if (providerSettings) {
+      task.providerSettings = providerSettings;
+    }
+
+    const payload = [task];
 
     const response = await axios.post(
       "https://api.runware.ai/v1",
@@ -83,6 +122,20 @@ export const generateImageRunware = async (
     };
   } catch (error) {
     console.error("Runware image generation failed", error);
+
+    if (axios.isAxiosError(error) && error.response) {
+      const responseData = error.response.data as any;
+      const detailedMessage =
+        responseData?.errors?.[0]?.message ||
+        responseData?.message ||
+        `Request failed with status code ${error.response.status}`;
+
+      return {
+        success: false,
+        error: detailedMessage
+      };
+    }
+
     return {
       success: false,
       error: (error as Error).message
