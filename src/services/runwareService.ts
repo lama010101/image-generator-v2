@@ -20,11 +20,13 @@ interface RunwareGenerateRequest {
   referenceImages?: string[];
   /** Desired image output format. Defaults to 'jpg' */
   imageType?: 'webp' | 'png' | 'jpg';
+  includeCost?: boolean;
 }
 
 interface RunwareGenerateResponse {
   success: boolean;
   imageUrl?: string;
+  cost?: number;
   error?: string;
 }
 
@@ -206,7 +208,8 @@ export const generateImageRunware = async (
       positivePrompt: req.prompt,
       outputType: "URL",
       model,
-      numberResults: 1
+      numberResults: 1,
+      includeCost: req.includeCost ?? true
     };
 
     if (supportsDimensions) {
@@ -264,8 +267,11 @@ export const generateImageRunware = async (
       }
     );
 
-    const data = response.data as { data: { imageURL: string }[] };
+    const data = response.data as { data?: { imageURL: string; cost?: number }[]; cost?: number };
     const imageURL = data?.data?.[0]?.imageURL;
+    const cost = typeof data?.cost === "number"
+      ? data.cost
+      : (typeof data?.data?.[0]?.cost === "number" ? data.data[0].cost : undefined);
 
     if (!imageURL) {
       throw new Error("Runware API response missing imageURL");
@@ -273,7 +279,8 @@ export const generateImageRunware = async (
 
     return {
       success: true,
-      imageUrl: imageURL
+      imageUrl: imageURL,
+      cost
     };
   } catch (error) {
     console.error("Runware image generation failed", error);

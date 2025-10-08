@@ -70,8 +70,8 @@ const getModelDisplayName = (model?: string | null): string | null => {
 
 const formatCostDisplay = (cost: number | null): string => {
   if (cost === null || cost === undefined) return "—";
-  const formatted = Number.isInteger(cost) ? cost.toString() : cost.toFixed(2);
-  return `${formatted} credits`;
+  const precision = cost < 0.01 ? 4 : 2;
+  return `$${cost.toFixed(precision)}`;
 };
 
 const FALLBACK_IMAGE_URL = 'https://picsum.photos/400/400?random=fallback';
@@ -119,6 +119,7 @@ const ImageSizeDisplay = ({ image }: { image: Image }) => {
 const Gallery = () => {
   const pageSizeOptions = [10, 25, 50, 100, 150, 200];
   const [filters, setFilters] = useState<FiltersState>({});
+  const activeFilters = useMemo(() => filters, [filters]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
@@ -127,30 +128,31 @@ const Gallery = () => {
 
   // Query for total count of images matching filters
   const { data: totalCountData } = useQuery({
-    queryKey: ['images-count', filters],
+    queryKey: ['images-count', activeFilters],
     queryFn: async () => {
       let query = supabase
         .from('images')
         .select('*', { count: 'exact', head: true });
-      if (filters.theme) query = query.eq('theme', filters.theme);
-      if (filters.location) query = query.eq('country', filters.location);
-      if (filters.dateCreatedRange) {
-        const [fromTs, toTs] = filters.dateCreatedRange;
+      if (activeFilters.theme) query = query.eq('theme', activeFilters.theme);
+      if (activeFilters.location) query = query.eq('country', activeFilters.location);
+      if (activeFilters.dateCreatedRange) {
+        const [fromTs, toTs] = activeFilters.dateCreatedRange;
         query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
       }
-      if (filters.numberPeopleRange) {
-        const [minP, maxP] = filters.numberPeopleRange;
+      if (activeFilters.numberPeopleRange) {
+        const [minP, maxP] = activeFilters.numberPeopleRange;
         query = query.gte('approx_people_count', minP).lte('approx_people_count', maxP);
       }
-      if (filters.confidenceRange) {
-        const [minC, maxC] = filters.confidenceRange;
+      if (activeFilters.confidenceRange) {
+        const [minC, maxC] = activeFilters.confidenceRange;
         query = query.gte('confidence', minC).lte('confidence', maxC);
       }
-      if (filters.celebrityOnly) query = query.eq('celebrity', true);
-      if (filters.trueEventOnly) query = query.eq('real_event', true);
-      if (filters.hasFullHints) query = query.eq('has_full_hints', true);
-      if (filters.readyStatus === 'ready') query = query.eq('ready', true);
-      else if (filters.readyStatus === 'not_ready') query = query.eq('ready', false);
+      if (activeFilters.celebrityOnly) query = query.eq('celebrity', true);
+      if (activeFilters.realEventStatus === 'true') query = query.eq('real_event', true);
+      else if (activeFilters.realEventStatus === 'fictional') query = query.eq('real_event', false);
+      if (activeFilters.hasFullHints) query = query.eq('has_full_hints', true);
+      if (activeFilters.readyStatus === 'ready') query = query.eq('ready', true);
+      else if (activeFilters.readyStatus === 'not_ready') query = query.eq('ready', false);
       const { count, error } = await query;
       if (error) throw error;
       return count ?? 0;
@@ -160,62 +162,119 @@ const Gallery = () => {
   });
 
   const { data: images, isLoading, error } = useQuery({
-    queryKey: ['images', page, pageSize, filters],
+    queryKey: ['images', page, pageSize, activeFilters],
     queryFn: async () => {
       console.log('Fetching images from database with filters...');
       try {
-        let query = supabase
-          .from('images')
-          .select('*')
-          .order('created_at', { ascending: false });
+        const primaryColumns = [
+          'id',
+          'title',
+          'description',
+          'optimized_image_url',
+          'country',
+          'year',
+          'model',
+          'created_at',
+          'prompt',
+          'width',
+          'height',
+          'cost',
+          'cfg_scale',
+          'steps',
+          'theme',
+          'approx_people_count',
+          'confidence',
+          'celebrity',
+          'real_event',
+          'has_full_hints',
+          'ready',
+          'aspect_ratio',
+          'desktop_size_kb',
+          'original_size_kb',
+        ].join(',');
+        const fallbackColumns = [
+          'id',
+          'title',
+          'description',
+          'optimized_image_url',
+          'created_at',
+          'ready',
+          'prompt',
+        ].join(',');
 
-        // Theme filter
-        if (filters.theme) {
-          query = query.eq('theme', filters.theme);
-        }
-        // Location filter (country)
-        if (filters.location) {
-          query = query.eq('country', filters.location);
-        }
-        // Date created range
-        if (filters.dateCreatedRange) {
-          const [fromTs, toTs] = filters.dateCreatedRange;
-          query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
-        }
-        // Number of people range
-        if (filters.numberPeopleRange) {
-          const [minP, maxP] = filters.numberPeopleRange;
-          query = query.gte('approx_people_count', minP).lte('approx_people_count', maxP);
-        }
-        // Confidence range
-        if (filters.confidenceRange) {
-          const [minC, maxC] = filters.confidenceRange;
-          query = query.gte('confidence', minC).lte('confidence', maxC);
-        }
-        // Celebrity only
-        if (filters.celebrityOnly) {
-          query = query.eq('celebrity', true);
-        }
-        // True event only
-        if (filters.trueEventOnly) {
-          query = query.eq('real_event', true);
-        }
-        // Has full hints
-        if (filters.hasFullHints) {
-          query = query.eq('has_full_hints', true);
-        }
-        // Ready status
-        if (filters.readyStatus === 'ready') {
-          query = query.eq('ready', true);
-        } else if (filters.readyStatus === 'not_ready') {
-          query = query.eq('ready', false);
-        }
-        // Pagination
-        query = query.range(page * pageSize, (page + 1) * pageSize - 1);
+        const rangeStart = page * pageSize;
+        const rangeEnd = (page + 1) * pageSize - 1;
 
-        const { data, error } = await query;
+        const applyFilters = (query: any) => {
+          let filteredQuery = query;
+          if (activeFilters.theme) {
+            filteredQuery = filteredQuery.eq('theme', activeFilters.theme);
+          }
+          if (activeFilters.location) {
+            filteredQuery = filteredQuery.eq('country', activeFilters.location);
+          }
+          if (activeFilters.dateCreatedRange) {
+            const [fromTs, toTs] = activeFilters.dateCreatedRange;
+            filteredQuery = filteredQuery
+              .gte('created_at', new Date(fromTs).toISOString())
+              .lte('created_at', new Date(toTs).toISOString());
+          }
+          if (activeFilters.numberPeopleRange) {
+            const [minP, maxP] = activeFilters.numberPeopleRange;
+            filteredQuery = filteredQuery
+              .gte('approx_people_count', minP)
+              .lte('approx_people_count', maxP);
+          }
+          if (activeFilters.confidenceRange) {
+            const [minC, maxC] = activeFilters.confidenceRange;
+            filteredQuery = filteredQuery
+              .gte('confidence', minC)
+              .lte('confidence', maxC);
+          }
+          if (activeFilters.celebrityOnly) {
+            filteredQuery = filteredQuery.eq('celebrity', true);
+          }
+          if (activeFilters.realEventStatus === 'true') {
+            filteredQuery = filteredQuery.eq('real_event', true);
+          } else if (activeFilters.realEventStatus === 'fictional') {
+            filteredQuery = filteredQuery.eq('real_event', false);
+          }
+          if (activeFilters.hasFullHints) {
+            filteredQuery = filteredQuery.eq('has_full_hints', true);
+          }
+          if (activeFilters.readyStatus === 'ready') {
+            filteredQuery = filteredQuery.eq('ready', true);
+          } else if (activeFilters.readyStatus === 'not_ready') {
+            filteredQuery = filteredQuery.eq('ready', false);
+          }
+          return filteredQuery;
+        };
+
+        const buildQuery = (columns: string, withOrder: boolean) => {
+          let q = supabase.from('images').select(columns);
+          q = applyFilters(q);
+          if (withOrder) {
+            q = q.order('created_at', { ascending: false });
+          }
+          return q.range(rangeStart, rangeEnd);
+        };
+
+        console.log('Gallery fetch columns:', primaryColumns);
+        console.log('Gallery fetch range:', rangeStart, rangeEnd);
+
+        const { data, error } = await buildQuery(primaryColumns, true);
         if (error) {
           console.warn('Supabase fetch error:', error);
+          if ((error as { code?: string })?.code === '57014') {
+            console.warn('Timeout when ordering by created_at. Retrying without order...');
+            const { data: fallbackData, error: fallbackError } = await buildQuery(fallbackColumns, false);
+            if (fallbackError) {
+              console.warn('Fallback fetch error:', fallbackError);
+              throw new Error('Failed to fetch images – Supabase unavailable');
+            }
+            console.log('Fetched images from Supabase (fallback):', fallbackData?.length || 0);
+            return fallbackData as Image[];
+          }
           throw new Error('Failed to fetch images – Supabase unavailable');
         }
         console.log('Fetched images from Supabase:', data?.length || 0);
@@ -231,6 +290,7 @@ const Gallery = () => {
 
     // No longer filter out by ready status
   // Filtering now handled in Supabase query
+const countsEnabled = typeof totalCountData === 'number';
 const filteredImages = images || [];
 
   // Bulk actions for selected images
@@ -287,9 +347,11 @@ const filteredImages = images || [];
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6">
         {/* Total count display */}
-        <div className="mb-4 text-sm text-muted-foreground">
-          Total images: {typeof totalCountData === 'number' ? totalCountData : '...'}
-        </div>
+        {countsEnabled && (
+          <div className="mb-4 text-sm text-muted-foreground">
+            Total images: {typeof totalCountData === 'number' ? totalCountData : '...'}
+          </div>
+        )}
         {/* Filters Panel */}
         <FiltersPanel
           state={filters}
@@ -531,7 +593,7 @@ const filteredImages = images || [];
                           {image.cost !== null && (
                             <div>
                               <div className="font-medium">Cost</div>
-                              <p className="text-muted-foreground">{image.cost}</p>
+                              <p className="text-muted-foreground">{formatCostDisplay(image.cost)}</p>
                             </div>
                           )}
                         </div>

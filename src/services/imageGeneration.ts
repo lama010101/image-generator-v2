@@ -283,6 +283,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         steps: request.steps,
         cfgScale: request.cfgScale,
         imageType: targetImageType,
+        includeCost: true,
       });
 
       if (!runwareRes.success || !runwareRes.imageUrl) {
@@ -290,6 +291,9 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       }
 
       originalImageUrl = runwareRes.imageUrl;
+      if (typeof runwareRes.cost === "number") {
+        imageData.cost = runwareRes.cost;
+      }
     }
 
     let optimizedImageUrl = "";
