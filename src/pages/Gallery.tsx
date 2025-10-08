@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { CalendarDays, MapPin, Eye, Zap, Loader2, FileImage } from "lucide-react";
+import { CalendarDays, MapPin, Eye, Zap, Loader2, FileImage, Maximize2 } from "lucide-react";
 
 interface Image {
   id: string;
@@ -16,6 +16,7 @@ interface Image {
   description: string | null;
   image_url: string | null;
   optimized_image_url: string | null;
+  desktop_image_url?: string | null;
   mobile_image_url: string | null;
   thumbnail_image_url: string | null;
   country: string | null;
@@ -40,6 +41,7 @@ interface Image {
   accuracy_score: Record<string, any> | null;
   desktop_size_kb: number | null;
   original_size_kb: number | null;
+  binary?: string | null;
 }
 
 const MODEL_NAME_MAP: Record<string, string> = {
@@ -70,6 +72,21 @@ const formatCostDisplay = (cost: number | null): string => {
   if (cost === null || cost === undefined) return "—";
   const formatted = Number.isInteger(cost) ? cost.toString() : cost.toFixed(2);
   return `${formatted} credits`;
+};
+
+const FALLBACK_IMAGE_URL = 'https://picsum.photos/400/400?random=fallback';
+const FULLSCREEN_FALLBACK_URL = 'https://picsum.photos/800/600?random=fallback';
+
+const getImageSource = (image: Image): string | null => {
+  return (
+    image.optimized_image_url ??
+    image.image_url ??
+    image.desktop_image_url ??
+    image.mobile_image_url ??
+    image.thumbnail_image_url ??
+    image.binary ??
+    null
+  );
 };
 
 // Local storage key for cached images
@@ -114,6 +131,7 @@ const Gallery = () => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<number>(25);
+  const [fullscreenImage, setFullscreenImage] = useState<Image | null>(null);
 
   // Query for total count of images matching filters
   const { data: totalCountData } = useQuery({
@@ -349,212 +367,240 @@ const filteredImages = images || [];
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {filteredImages.map((image) => (
-              <Dialog key={image.id}>
-                <DialogTrigger asChild>
-                  <Card className="cursor-pointer hover:shadow-lg transition-all group relative">
-                    <CardContent className="p-0">
-                      <Checkbox
-                        checked={selectedIds.includes(image.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedIds((prev) => [...prev, image.id]);
-                          } else {
-                            setSelectedIds((prev) => prev.filter((id) => id !== image.id));
-                          }
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute top-2 left-2 z-10 bg-background/80 rounded"
-                      />
-                      {/* Ready/Not Ready Tag */}
-                      <div className="absolute top-2 right-2 z-10">
-                        {image.ready ? (
-                          <Badge className="bg-green-500 text-white">Ready</Badge>
-                        ) : (
-                          <Badge className="bg-red-500 text-white">Not Ready</Badge>
-                        )}
-                      </div>
-                      <div className="aspect-square bg-muted rounded-t-lg overflow-hidden">
-                        {image.optimized_image_url || image.image_url || image.binary ? (
+            {filteredImages.map((image) => {
+              const imageSrc = getImageSource(image);
+              return (
+                <Dialog key={image.id}>
+                  <DialogTrigger asChild>
+                    <Card className="cursor-pointer hover:shadow-lg transition-all group relative">
+                      <CardContent className="p-0">
+                        <Checkbox
+                          checked={selectedIds.includes(image.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedIds((prev) => [...prev, image.id]);
+                            } else {
+                              setSelectedIds((prev) => prev.filter((id) => id !== image.id));
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-2 left-2 z-10 bg-background/80 rounded"
+                        />
+                        {/* Ready/Not Ready Tag */}
+                        <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-2">
+                          {image.ready ? (
+                            <Badge className="bg-green-500 text-white">Ready</Badge>
+                          ) : (
+                            <Badge className="bg-red-500 text-white">Not Ready</Badge>
+                          )}
+                          <Button
+                            variant="secondary"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setFullscreenImage(image);
+                            }}
+                            title="View fullscreen"
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="aspect-square bg-muted rounded-t-lg overflow-hidden">
+                          {imageSrc ? (
+                            <img
+                              src={imageSrc}
+                              alt={image.title || 'Generated image'}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              onError={(e) => {
+                                console.error('Image failed to load:', image.id);
+                                (e.target as HTMLImageElement).src = FALLBACK_IMAGE_URL;
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Zap className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <h3 className="font-medium text-sm line-clamp-2 mb-2">
+                            {image.title || 'Untitled'}
+                          </h3>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                            <div className="flex items-center gap-1">
+                              <CalendarDays className="h-3 w-3" />
+                              {new Date(image.created_at).toLocaleDateString()}
+                            </div>
+                            {image.model && (
+                              <Badge variant="outline" className="text-xs">
+                                {getModelDisplayName(image.model) ?? image.model}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-end justify-between text-xs">
+                            <div className="text-sm font-semibold text-foreground">
+                              {formatCostDisplay(image.cost)}
+                            </div>
+                            {image.model && (
+                              <span className="text-[11px] text-muted-foreground font-mono">
+                                {image.model}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>{image.title || 'Untitled Image'}</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        {imageSrc ? (
                           <img
-                            src={image.optimized_image_url || image.image_url || image.binary || ''}
+                            src={imageSrc}
                             alt={image.title || 'Generated image'}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            className="w-full rounded-lg"
                             onError={(e) => {
-                              console.error('Image failed to load:', image.id);
-                              (e.target as HTMLImageElement).src = 'https://picsum.photos/400/400?random=fallback';
+                              (e.target as HTMLImageElement).src = FULLSCREEN_FALLBACK_URL;
                             }}
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Zap className="h-8 w-8 text-muted-foreground" />
+                          <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
+                            <Zap className="h-12 w-12 text-muted-foreground" />
                           </div>
                         )}
                       </div>
-                      <div className="p-3">
-                        <h3 className="font-medium text-sm line-clamp-2 mb-2">
-                          {image.title || 'Untitled'}
-                        </h3>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                          <div className="flex items-center gap-1">
-                            <CalendarDays className="h-3 w-3" />
-                            {new Date(image.created_at).toLocaleDateString()}
+                      <div className="space-y-4">
+                        {image.description && (
+                          <div>
+                            <h4 className="font-semibold mb-2">Description</h4>
+                            <p className="text-sm text-muted-foreground">{image.description}</p>
                           </div>
-                          {image.model && (
-                            <Badge variant="outline" className="text-xs">
-                              {image.model}
-                            </Badge>
+                        )}
+
+                        <div>
+                          <h4 className="font-semibold mb-2">Prompt</h4>
+                          <p className="text-sm text-muted-foreground bg-muted p-3 rounded">{image.prompt}</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <div className="flex items-center gap-1 font-medium">
+                              <MapPin className="h-4 w-4" />
+                              Location
+                            </div>
+                            <p className="text-muted-foreground">{image.country ?? 'Not specified'}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1 font-medium">
+                              <CalendarDays className="h-4 w-4" />
+                              Year
+                            </div>
+                            <p className="text-muted-foreground">{image.year ?? 'Not specified'}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <div className="border-t border-border pt-4">
+                              <ImageSizeDisplay image={image} />
+                            </div>
+                          </div>
+                          {image.width && image.height ? (
+                            <div>
+                              <div className="font-medium">Dimensions</div>
+                              <p className="text-muted-foreground">{image.width} × {image.height}</p>
+                            </div>
+                          ) : null}
+                          {image.model ? (
+                            <div>
+                              <div className="font-medium">Model</div>
+                              <p className="text-muted-foreground">{image.model}</p>
+                            </div>
+                          ) : null}
+                          {typeof image.cfg_scale === 'number' && (
+                            <div>
+                              <div className="font-medium">CFG Scale</div>
+                              <p className="text-muted-foreground">{image.cfg_scale}</p>
+                            </div>
+                          )}
+                          {typeof image.steps === 'number' && (
+                            <div>
+                              <div className="font-medium">Steps</div>
+                              <p className="text-muted-foreground">{image.steps}</p>
+                            </div>
+                          )}
+                          {image.aspect_ratio && (
+                            <div>
+                              <div className="font-medium">Aspect Ratio</div>
+                              <p className="text-muted-foreground">{image.aspect_ratio}</p>
+                            </div>
+                          )}
+                          {image.cost !== null && (
+                            <div>
+                              <div className="font-medium">Cost</div>
+                              <p className="text-muted-foreground">{image.cost}</p>
+                            </div>
                           )}
                         </div>
-                        <div className="flex items-end justify-between text-xs">
-                          <div className="flex flex-col text-left">
-                            <span className="text-muted-foreground uppercase tracking-wide">Price</span>
-                            <span className="text-sm font-semibold text-foreground">
-                              {formatCostDisplay(image.cost)}
-                            </span>
-                          </div>
-                          {image.model && (
-                            <div className="flex flex-col items-end gap-1 text-right">
-                              <Badge variant="outline" className="text-xs">
-                                {image.model}
-                              </Badge>
-                              <span className="text-[11px] text-muted-foreground">
-                                {getModelDisplayName(image.model)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>{image.title || 'Untitled Image'}</DialogTitle>
-                  </DialogHeader>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      {image.optimized_image_url || image.image_url || image.binary ? (
-                        <img
-                          src={image.optimized_image_url || image.image_url || image.binary || ''}
-                          alt={image.title || 'Generated image'}
-                          className="w-full rounded-lg"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://picsum.photos/800/600?random=fallback';
-                          }}
-                        />
-                      ) : (
-                        <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
-                          <Zap className="h-12 w-12 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      {image.description && (
-                        <div>
-                          <h4 className="font-semibold mb-2">Description</h4>
-                          <p className="text-sm text-muted-foreground">{image.description}</p>
-                        </div>
-                      )}
-                      
-                      <div>
-                        <h4 className="font-semibold mb-2">Prompt</h4>
-                        <p className="text-sm text-muted-foreground bg-muted p-3 rounded">{image.prompt}</p>
-                      </div>
 
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="flex items-center gap-1 font-medium">
-                            <MapPin className="h-4 w-4" />
-                            Location
-                          </div>
-                          <p className="text-muted-foreground">{image.country ?? 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1 font-medium">
-                            <CalendarDays className="h-4 w-4" />
-                            Year
-                          </div>
-                          <p className="text-muted-foreground">{image.year ?? 'Not specified'}</p>
-                        </div>
-                        <div className="col-span-2">
-                          <div className="border-t border-border pt-4">
-                            <ImageSizeDisplay image={image} />
-                          </div>
-                        </div>
-                        {image.width && image.height ? (
-                          <div>
-                            <div className="font-medium">Dimensions</div>
-                            <p className="text-muted-foreground">{image.width} × {image.height}</p>
-                          </div>
-                        ) : null}
-                        {image.model ? (
-                          <div>
-                            <div className="font-medium">Model</div>
-                            <p className="text-muted-foreground">{image.model}</p>
-                          </div>
-                        ) : null}
-                        {typeof image.cfg_scale === 'number' && (
-                          <div>
-                            <div className="font-medium">CFG Scale</div>
-                            <p className="text-muted-foreground">{image.cfg_scale}</p>
+                        {image.accuracy_score?.source === 'reve' && (
+                          <div className="border border-dashed border-border rounded-lg p-4 space-y-2">
+                            <h4 className="font-semibold text-sm">REVE Details</h4>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <div className="font-medium">Request ID</div>
+                                <p className="text-muted-foreground">{image.accuracy_score.request_id ?? '—'}</p>
+                              </div>
+                              <div>
+                                <div className="font-medium">Credits Used</div>
+                                <p className="text-muted-foreground">{image.cost ?? image.accuracy_score.credits_used ?? '—'}</p>
+                              </div>
+                              <div>
+                                <div className="font-medium">Credits Remaining</div>
+                                <p className="text-muted-foreground">{image.accuracy_score.credits_remaining ?? '—'}</p>
+                              </div>
+                              <div>
+                                <div className="font-medium">Source</div>
+                                <p className="text-muted-foreground">{image.accuracy_score.source}</p>
+                              </div>
+                            </div>
                           </div>
                         )}
-                        {typeof image.steps === 'number' && (
-                          <div>
-                            <div className="font-medium">Steps</div>
-                            <p className="text-muted-foreground">{image.steps}</p>
-                          </div>
-                        )}
-                        {image.aspect_ratio && (
-                          <div>
-                            <div className="font-medium">Aspect Ratio</div>
-                            <p className="text-muted-foreground">{image.aspect_ratio}</p>
-                          </div>
-                        )}
-                        {image.cost !== null && (
-                          <div>
-                            <div className="font-medium">Cost</div>
-                            <p className="text-muted-foreground">{image.cost}</p>
-                          </div>
-                        )}
-                      </div>
 
-                      {image.accuracy_score?.source === 'reve' && (
-                        <div className="border border-dashed border-border rounded-lg p-4 space-y-2">
-                          <h4 className="font-semibold text-sm">REVE Details</h4>
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <div className="font-medium">Request ID</div>
-                              <p className="text-muted-foreground">{image.accuracy_score.request_id ?? '—'}</p>
-                            </div>
-                            <div>
-                              <div className="font-medium">Credits Used</div>
-                              <p className="text-muted-foreground">{image.cost ?? image.accuracy_score.credits_used ?? '—'}</p>
-                            </div>
-                            <div>
-                              <div className="font-medium">Credits Remaining</div>
-                              <p className="text-muted-foreground">{image.accuracy_score.credits_remaining ?? '—'}</p>
-                            </div>
-                            <div>
-                              <div className="font-medium">Source</div>
-                              <p className="text-muted-foreground">{image.accuracy_score.source}</p>
-                            </div>
-                          </div>
+                        <div className="text-xs text-muted-foreground">
+                          Created: {new Date(image.created_at).toLocaleString()}
                         </div>
-                      )}
-
-                      <div className="text-xs text-muted-foreground">
-                        Created: {new Date(image.created_at).toLocaleString()}
                       </div>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            ))}
+                  </DialogContent>
+                </Dialog>
+              );
+            })}
           </div>
         )}
       </div>
+      <Dialog
+        open={!!fullscreenImage}
+        onOpenChange={(open) => {
+          if (!open) setFullscreenImage(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[95vw] bg-black/90 border-0 p-0">
+          {fullscreenImage && (
+            <div className="flex items-center justify-center">
+              <img
+                src={getImageSource(fullscreenImage) ?? FULLSCREEN_FALLBACK_URL}
+                alt={fullscreenImage.title || 'Fullscreen image'}
+                className="h-[90vh] w-auto object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = FULLSCREEN_FALLBACK_URL;
+                }}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -104,7 +104,10 @@ export const GenerationSettingsPanel: React.FC<GenerationSettingsPanelProps> = (
                     <SelectContent>
                       {defaultModels.map((m) => (
                         <SelectItem key={m.value} value={m.value}>
-                          {m.label}
+                          <div className="flex flex-col">
+                            <span>{m.label}</span>
+                            <span className="text-xs text-muted-foreground font-mono">{m.value}</span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
