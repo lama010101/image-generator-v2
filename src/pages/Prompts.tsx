@@ -47,8 +47,8 @@ const defaultSettings: GenerationSettings = {
   model: "bfl:2@1", // default Runware BFL model
   steps: 20,
   cfgScale: 2,
-  width: 1536,
-  height: 640,
+  width: 1344,
+  height: 576,
   imageType: "webp",
 };
 

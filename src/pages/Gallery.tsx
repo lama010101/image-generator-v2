@@ -78,15 +78,7 @@ const FALLBACK_IMAGE_URL = 'https://picsum.photos/400/400?random=fallback';
 const FULLSCREEN_FALLBACK_URL = 'https://picsum.photos/800/600?random=fallback';
 
 const getImageSource = (image: Image): string | null => {
-  return (
-    image.optimized_image_url ??
-    image.image_url ??
-    image.desktop_image_url ??
-    image.mobile_image_url ??
-    image.thumbnail_image_url ??
-    image.binary ??
-    null
-  );
+  return image.optimized_image_url ?? null;
 };
 
 // Local storage key for cached images

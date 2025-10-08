@@ -57,8 +57,8 @@ interface BflModelConfig {
 const BFL_MODEL_CONFIGS: Record<string, BflModelConfig> = {
   "bfl:1@1": {
     workflow: "text-to-image",
-    defaultWidth: 1024,
-    defaultHeight: 1024,
+    defaultWidth: 1344,
+    defaultHeight: 576,
     defaultSteps: 40,
     providerSettings: { promptUpsampling: true, safetyTolerance: 2 },
     supportsDimensions: true,
@@ -67,8 +67,8 @@ const BFL_MODEL_CONFIGS: Record<string, BflModelConfig> = {
   },
   "bfl:2@1": {
     workflow: "text-to-image",
-    defaultWidth: 1280,
-    defaultHeight: 720,
+    defaultWidth: 1344,
+    defaultHeight: 576,
     providerSettings: { promptUpsampling: false, safetyTolerance: 2 },
     supportsDimensions: true,
     supportsCfgScale: false,
@@ -76,8 +76,8 @@ const BFL_MODEL_CONFIGS: Record<string, BflModelConfig> = {
   },
   "bfl:2@2": {
     workflow: "text-to-image",
-    defaultWidth: 2752,
-    defaultHeight: 1536,
+    defaultWidth: 1344,
+    defaultHeight: 576,
     providerSettings: { promptUpsampling: true, safetyTolerance: 2, raw: true },
     supportsDimensions: true,
     supportsCfgScale: false,
@@ -85,8 +85,8 @@ const BFL_MODEL_CONFIGS: Record<string, BflModelConfig> = {
   },
   "bfl:3@1": {
     workflow: "reference",
-    defaultWidth: 1392,
-    defaultHeight: 752,
+    defaultWidth: 1344,
+    defaultHeight: 576,
     providerSettings: { promptUpsampling: false, safetyTolerance: 2 },
     supportsDimensions: true,
     supportsCfgScale: false,
@@ -94,8 +94,8 @@ const BFL_MODEL_CONFIGS: Record<string, BflModelConfig> = {
   },
   "bfl:4@1": {
     workflow: "reference",
-    defaultWidth: 1024,
-    defaultHeight: 1024,
+    defaultWidth: 1344,
+    defaultHeight: 576,
     providerSettings: { promptUpsampling: true, safetyTolerance: 2 },
     supportsDimensions: true,
     supportsCfgScale: false,

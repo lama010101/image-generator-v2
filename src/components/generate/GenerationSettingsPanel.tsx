@@ -34,21 +34,25 @@ const defaultModels = [
   { label: "BFL FLUX Kontext Max", value: "bfl:4@1" },
   { label: "Runware 100", value: "runware:100@1" },
   { label: "RunDiffusion 130", value: "rundiffusion:130@100" },
+  { label: "REVE (Latest)", value: "reve:latest" },
+  { label: "REVE (2025-09-15)", value: "reve:reve-create@20250915" },
   { label: "Imagen 4 (FAL)", value: "fal-ai/imagen4/preview" },
   { label: "Fast SDXL (FAL)", value: "fal-ai/fast-sdxl" },
   { label: "SD Turbo (FAL)", value: "fal-ai/sd-turbo" },
 ];
 
 const modelPresets: Record<string, Partial<GenerationSettings>> = {
-  "bfl:1@1": { width: 1024, height: 1024, steps: 40, cfgScale: 2.5 },
-  "bfl:2@1": { width: 1280, height: 720 },
-  "bfl:2@2": { width: 2752, height: 1536 },
-  "bfl:3@1": { width: 1392, height: 752 },
-  "bfl:4@1": { width: 1024, height: 1024 },
+  "bfl:1@1": { width: 1344, height: 576, steps: 40, cfgScale: 2.5 },
+  "bfl:2@1": { width: 1344, height: 576 },
+  "bfl:2@2": { width: 1344, height: 576 },
+  "bfl:3@1": { width: 1344, height: 576 },
+  "bfl:4@1": { width: 1344, height: 576 },
+  "reve:latest": { width: 1536, height: 1024, imageType: "png" },
+  "reve:reve-create@20250915": { width: 1536, height: 1024, imageType: "png" },
 };
 
-const DEFAULT_WIDTH = 576;
-const DEFAULT_HEIGHT = 1344;
+const DEFAULT_WIDTH = 1344;
+const DEFAULT_HEIGHT = 576;
 const DEFAULT_IMAGE_TYPE: GenerationSettings['imageType'] = 'webp';
 
 export const GenerationSettingsPanel: React.FC<GenerationSettingsPanelProps> = ({ settings, onSettingsChange }) => {
@@ -59,24 +63,17 @@ export const GenerationSettingsPanel: React.FC<GenerationSettingsPanelProps> = (
 
   const handleModelChange = (val: string) => {
     const preset = modelPresets[val];
-    if (preset) {
-      onSettingsChange({
-        ...settings,
-        ...preset,
-        model: val,
-        width: DEFAULT_WIDTH,
-        height: DEFAULT_HEIGHT,
-        imageType: DEFAULT_IMAGE_TYPE,
-      });
-    } else {
-      onSettingsChange({
-        ...settings,
-        model: val,
-        width: DEFAULT_WIDTH,
-        height: DEFAULT_HEIGHT,
-        imageType: DEFAULT_IMAGE_TYPE,
-      });
-    }
+    const nextSettings: GenerationSettings = {
+      ...settings,
+      model: val,
+      steps: preset?.steps ?? settings.steps,
+      cfgScale: preset?.cfgScale ?? settings.cfgScale,
+      width: preset?.width ?? DEFAULT_WIDTH,
+      height: preset?.height ?? DEFAULT_HEIGHT,
+      imageType: preset?.imageType ?? DEFAULT_IMAGE_TYPE,
+    };
+
+    onSettingsChange(nextSettings);
   };
 
   const [accordionValue, setAccordionValue] = React.useState<string>('settings');

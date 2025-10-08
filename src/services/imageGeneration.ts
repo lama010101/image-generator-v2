@@ -1,6 +1,6 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { generateImageRunware } from "@/services/runwareService";
+import { generateImage as generateReveImage } from "@/services/reveClient";
 import { settings } from "@/lib/settings";
 
 export interface GenerationRequest {
@@ -16,7 +16,7 @@ export interface GenerationRequest {
   cfgScale?: number;
   width?: number;
   height?: number;
-  imageType?: 'webp' | 'png' | 'jpg';
+  imageType?: "webp" | "png" | "jpg";
 }
 
 export interface GenerationResult {
@@ -29,21 +29,44 @@ const blobToDataUrl = async (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
+      if (typeof reader.result === "string") {
         resolve(reader.result);
       } else {
-        reject(new Error('Failed to convert blob to data URL'));
+        reject(new Error("Failed to convert blob to data URL"));
       }
     };
-    reader.onerror = () => reject(new Error('Failed to read blob as data URL'));
+    reader.onerror = () => reject(new Error("Failed to read blob as data URL"));
     reader.readAsDataURL(blob);
   });
 };
 
+const base64ToBlob = (base64: string, mimeType: string): Blob => {
+  if (!base64) {
+    throw new Error("No base64 payload provided");
+  }
+
+  if (typeof atob === "function") {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i += 1) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mimeType });
+  }
+
+  if (typeof Buffer !== "undefined") {
+    const buffer = Buffer.from(base64, "base64");
+    return new Blob([buffer], { type: mimeType });
+  }
+
+  throw new Error("Base64 decoding is not supported in this environment");
+};
+
 const DEFAULT_WIDTH = 1344;
 const DEFAULT_HEIGHT = 576;
-const DEFAULT_ASPECT_RATIO = '21:9';
-const DEFAULT_IMAGE_TYPE: GenerationRequest['imageType'] = 'webp';
+const DEFAULT_ASPECT_RATIO = "21:9";
+const DEFAULT_IMAGE_TYPE: GenerationRequest["imageType"] = "webp";
 
 const computeAspectRatio = (
   width?: number | null,
@@ -61,99 +84,144 @@ const computeAspectRatio = (
   return `${normalizedWidth / divisor}:${normalizedHeight / divisor}`;
 };
 
+interface AccuracyScore {
+  request_id: string | null;
+  credits_remaining: number | null;
+  source: string;
+}
+
+interface ImageRecordPayload {
+  id: string;
+  prompt: string;
+  prompt_id: string;
+  ready: boolean;
+  ai_generated: boolean;
+  model?: string;
+  title?: string;
+  description?: string | null;
+  user_id?: string;
+  cfg_scale?: number;
+  steps?: number;
+  accuracy_score?: AccuracyScore;
+  cost?: number;
+  mature_content?: boolean | null;
+  binary?: string;
+  image_url?: string;
+  optimized_image_url?: string;
+  desktop_image_url?: string;
+  mobile_image_url?: string;
+  thumbnail_image_url?: string;
+  desktop_size_kb?: number;
+  mobile_size_kb?: number;
+  original_size_kb?: number;
+  width?: number;
+  height?: number;
+  aspect_ratio?: string | null;
+  output_format?: GenerationRequest["imageType"];
+  [key: string]: unknown;
+}
+
+interface VariantEntry {
+  blob: Blob;
+  size: number;
+  width: number;
+  height: number;
+}
+
+type VariantBundle = {
+  original: Blob | null;
+  originalSize: number;
+  desktop: VariantEntry | null;
+  mobile: VariantEntry | null;
+  thumbnail: VariantEntry | null;
+};
+
+type CachedImage = Record<string, unknown> & { created_at?: string };
+
 export const generateImage = async (request: GenerationRequest): Promise<GenerationResult> => {
   try {
-    console.log('Starting image generation for prompt:', request.prompt);
-    
-    // Step 1: Create image record in database with pending status
-    // 1a. Fetch the prompt so we can copy every overlapping column into the new image record (rule compliance)
+    console.log("Starting image generation for prompt:", request.prompt);
+
+    // Step 1: Create image record (pending status)
     const { data: promptRow, error: promptError } = await supabase
-      .from('prompts')
-      .select('*')
-      .eq('id', request.promptId)
+      .from("prompts")
+      .select("*")
+      .eq("id", request.promptId)
       .single();
 
     if (promptError || !promptRow) {
       throw new Error(`Prompt not found for id ${request.promptId}`);
     }
 
-    // Generate a unique ID for the image
     const imageId = crypto.randomUUID();
 
-    // Remove the primary key from the prompt object; we don't want to duplicate it in the images table
-
-    // Define the set of columns that exist in BOTH tables.
     const commonColumns = new Set([
-      '1_when_century','1_where_continent','2_when_event','2_when_event_years','2_where_landmark','2_where_landmark_km',
-      '3_when_decade','3_where_region','4_when_event','4_when_event_years','4_where_landmark','4_where_landmark_km',
-      '5_when_clues','5_where_clues','ai_generated','approx_people_count','celebrity','confidence','country',
-      'date','description','gps_coordinates','key_elements','last_verified','latitude','location','longitude',
-      'negative_prompt','prompt','real_event','source_citation','theme','title','user_id','year'
+      "1_when_century","1_where_continent","2_when_event","2_when_event_years","2_where_landmark","2_where_landmark_km",
+      "3_when_decade","3_where_region","4_when_event","4_when_event_years","4_where_landmark","4_where_landmark_km",
+      "5_when_clues","5_where_clues","ai_generated","approx_people_count","celebrity","confidence","country",
+      "date","description","gps_coordinates","key_elements","last_verified","latitude","location","longitude",
+      "negative_prompt","prompt","real_event","source_citation","theme","title","user_id","year"
     ] as const);
 
-    const promptColumnsSubset: Record<string, any> = {};
-    Object.keys(promptRow as any).forEach((key) => {
-      if (commonColumns.has(key as any)) {
-        promptColumnsSubset[key] = (promptRow as any)[key];
+    const promptColumnsSubset: Record<string, unknown> = {};
+    const promptRowRecord = promptRow as Record<string, unknown>;
+
+    Object.keys(promptRowRecord).forEach((key) => {
+      if (commonColumns.has(key)) {
+        promptColumnsSubset[key] = promptRowRecord[key];
       }
     });
 
-    // Build the initial image record, copying ONLY overlapping prompt columns first, then overriding/adding image-specific ones
-    let imageData: any = {
+    let imageData: ImageRecordPayload = {
       id: imageId,
       ...promptColumnsSubset,
-      prompt: request.prompt, // allow updated prompt text if provided
-      title: request.title || (promptRow as any).title || 'Generated Image',
-      description: request.description ?? (promptRow as any).description,
+      prompt: request.prompt,
+      title: request.title || (promptRowRecord.title as string | undefined) || "Generated Image",
+      description: (request.description ?? promptRowRecord.description) as string | null | undefined,
       prompt_id: request.promptId,
       ready: false,
       ai_generated: true,
-      model: request.model || 'runware',
-      // Use the same user as the prompt so FK constraint passes
-      user_id: (promptRow as any).user_id,
+      model: request.model || "runware",
+      user_id: promptRowRecord.user_id as string | undefined,
       cfg_scale: request.cfgScale,
       steps: request.steps,
     };
 
-    // Remove keys with null/undefined to avoid inserting into generated columns
-    Object.keys(imageData).forEach((k) => {
-      if (imageData[k] === null || imageData[k] === undefined) {
-        delete imageData[k];
+    Object.keys(imageData).forEach((key) => {
+      if (imageData[key] === null || imageData[key] === undefined) {
+        delete imageData[key];
       }
     });
-    
-    // Try to insert into Supabase, but continue even if it fails
+
     const { data: dbImageData, error: insertError } = await supabase
-      .from('images')
+      .from("images")
       .insert(imageData)
       .select()
       .single();
 
     if (insertError) {
-      console.warn('Warning: Could not save to Supabase:', insertError);
-      // Continue with local imageData instead of throwing error
+      console.warn("Warning: Could not save to Supabase:", insertError);
     } else if (dbImageData) {
-      // Use the database-returned data if available
-      imageData = dbImageData;
+      imageData = dbImageData as ImageRecordPayload;
     }
 
-    console.log('Created image record:', imageData.id);
+    console.log("Created image record:", imageData.id);
 
-    // Step 2: Generate image via either Runware or FAL based on selected model
-    let originalImageUrl = "";
     const modelSel = request.model ?? "runware:100@1";
+    imageData.model = modelSel;
 
     const targetWidth = request.width ?? DEFAULT_WIDTH;
     const targetHeight = request.height ?? DEFAULT_HEIGHT;
-    const targetImageType = request.imageType ?? DEFAULT_IMAGE_TYPE;
-    const targetAspectRatio =
-      computeAspectRatio(targetWidth, targetHeight) ?? DEFAULT_ASPECT_RATIO;
+    let targetImageType = request.imageType ?? DEFAULT_IMAGE_TYPE;
+    const requestedAspectRatio = computeAspectRatio(targetWidth, targetHeight) ?? DEFAULT_ASPECT_RATIO;
+
+    let originalImageUrl = "";
+    let binaryDataUrl: string | null = null;
+    let sourceBlob: Blob | null = null;
 
     if (modelSel.startsWith("fal-ai/")) {
-      // --- Use Fal.ai service ---
       const { generateImageFal } = await import("@/services/falServiceQueue");
 
-      // Ensure API key present
       if (!settings.VITE_FAL_API_KEY) {
         throw new Error("FAL API key is missing. Please set VITE_FAL_API_KEY in your environment.");
       }
@@ -163,10 +231,10 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         negative_prompt: request.negative_prompt,
         image_size: `${targetWidth}x${targetHeight}`,
         output_format:
-          targetImageType === 'png'
-            ? 'png'
-            : targetImageType === 'jpg'
-              ? 'jpeg'
+          targetImageType === "png"
+            ? "png"
+            : targetImageType === "jpg"
+              ? "jpeg"
               : undefined,
         model: modelSel,
       });
@@ -176,8 +244,32 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       }
 
       originalImageUrl = falRes.imageUrl;
+    } else if (modelSel.startsWith("reve:")) {
+      const version = modelSel.split(":")[1] || "latest";
+
+      const reveResponse = await generateReveImage({
+        prompt: request.prompt,
+        aspect_ratio: requestedAspectRatio,
+        version,
+      });
+
+      if (!reveResponse?.image) {
+        throw new Error("REVE image generation failed: no image payload received");
+      }
+
+      targetImageType = "png";
+      binaryDataUrl = `data:image/png;base64,${reveResponse.image}`;
+      originalImageUrl = binaryDataUrl;
+      sourceBlob = base64ToBlob(reveResponse.image, "image/png");
+
+      imageData.accuracy_score = {
+        request_id: reveResponse.request_id || null,
+        credits_remaining: reveResponse.credits_remaining ?? null,
+        source: "reve",
+      };
+      imageData.cost = reveResponse.credits_used ?? imageData.cost;
+      imageData.mature_content = reveResponse.content_violation ?? null;
     } else {
-      // --- Use Runware service ---
       if (!settings.VITE_RUNWARE_API_KEY) {
         throw new Error("Runware API key is missing. Please set VITE_RUNWARE_API_KEY in your environment.");
       }
@@ -199,93 +291,113 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
 
       originalImageUrl = runwareRes.imageUrl;
     }
-    
-    // Upload the generated image to Firebase Storage so that the file is under our control
-    let optimizedImageUrl: string = '';
-    // Placeholders for variant URLs and metadata so they are accessible outside the try/catch.
-    let desktopURL = '';
-    let mobileURL = '';
-    let thumbnailURL = '';
-    let variants: any = {
-      desktop: { size: 0, width: 0, height: 0 },
-      mobile: { size: 0, width: 0, height: 0 },
-      thumbnail: { size: 0, width: 0, height: 0 },
+
+    let optimizedImageUrl = "";
+    let desktopURL = "";
+    let mobileURL = "";
+    let thumbnailURL = "";
+
+    let variants: VariantBundle = {
+      original: null,
+      originalSize: 0,
+      desktop: null,
+      mobile: null,
+      thumbnail: null,
     };
 
-    let originalBlob: Blob | null = null;
+    let blobForUpload: Blob | null = sourceBlob;
+
     try {
-      // Dynamically import only in browser / client runtime to keep bundle size small.
-      const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
-      const { firebaseStorage } = await import("@/integrations/firebase/client");
+      const [{ ref, uploadBytes, getDownloadURL }, { firebaseStorage }] = await Promise.all([
+        import("firebase/storage"),
+        import("@/integrations/firebase/client"),
+      ]);
 
-      // Fetch the remote image as a Blob
-      const imageResponse = await fetch(originalImageUrl);
-      originalBlob = await imageResponse.blob();
+      if (!blobForUpload) {
+        const imageResponse = await fetch(originalImageUrl);
+        blobForUpload = await imageResponse.blob();
+      }
 
-    // Generate variants in the selected format (desktop, mobile, thumbnail)
-    const { generateMultiFormatVariants } = await import("@/services/imageFormatService");
-    variants = await generateMultiFormatVariants(originalBlob, targetImageType);
+      if (!blobForUpload) {
+        throw new Error("Failed to retrieve image blob for upload");
+      }
 
-      const imageType = targetImageType;
-      const fileExtension = imageType === 'jpg' ? 'jpg' : imageType;
-      const mimeType = imageType === 'jpg' ? 'image/jpeg' : `image/${imageType}`;
+      const { generateMultiFormatVariants } = await import("@/services/imageFormatService");
+      const generatedVariants = await generateMultiFormatVariants(blobForUpload, targetImageType);
 
-      // Upload original image (for archival/reference)
+      variants = {
+        original: generatedVariants.original,
+        originalSize: generatedVariants.originalSize,
+        desktop: generatedVariants.desktop,
+        mobile: generatedVariants.mobile,
+        thumbnail: generatedVariants.thumbnail,
+      };
+
+      if (!variants.original || !variants.desktop || !variants.mobile || !variants.thumbnail) {
+        throw new Error("Variant generation incomplete");
+      }
+
+      const fileExtension = targetImageType === "jpg" ? "jpg" : targetImageType;
+      const mimeType = targetImageType === "jpg" ? "image/jpeg" : `image/${targetImageType}`;
+
       const originalStorageRef = ref(firebaseStorage, `original/${imageData.id}.${fileExtension}`);
-      await uploadBytes(originalStorageRef, variants.original, {
-        contentType: mimeType,
-      });
+      await uploadBytes(originalStorageRef, variants.original, { contentType: mimeType });
       originalImageUrl = await getDownloadURL(originalStorageRef);
 
-      // Upload variant images
       const desktopRef = ref(firebaseStorage, `desktop/${imageData.id}.${fileExtension}`);
       const mobileRef = ref(firebaseStorage, `mobile/${imageData.id}.${fileExtension}`);
       const thumbnailRef = ref(firebaseStorage, `thumbnail/${imageData.id}.${fileExtension}`);
+
       await Promise.all([
         uploadBytes(desktopRef, variants.desktop.blob, { contentType: mimeType }),
         uploadBytes(mobileRef, variants.mobile.blob, { contentType: mimeType }),
         uploadBytes(thumbnailRef, variants.thumbnail.blob, { contentType: mimeType }),
       ]);
 
-      // Retrieve download URLs for the variants
       [desktopURL, mobileURL, thumbnailURL] = await Promise.all([
         getDownloadURL(desktopRef),
         getDownloadURL(mobileRef),
         getDownloadURL(thumbnailRef),
       ]);
 
-      // We'll keep optimizedImageUrl as desktop URL for backward compatibility
       optimizedImageUrl = desktopURL;
-
-      console.log(`Variant generation complete. Desktop: ${variants.desktop.size} bytes, Mobile: ${variants.mobile.size} bytes, Thumbnail: ${variants.thumbnail.size} bytes`);
+      console.log(
+        `Variant generation complete. Desktop: ${variants.desktop.size} bytes, Mobile: ${variants.mobile.size} bytes, Thumbnail: ${variants.thumbnail.size} bytes`
+      );
     } catch (error) {
       console.warn("Image optimization failed, attempting inline fallback:", error);
       try {
-        if (!originalBlob) {
+        if (!blobForUpload) {
           const response = await fetch(originalImageUrl);
-          originalBlob = await response.blob();
+          blobForUpload = await response.blob();
         }
 
-        if (originalBlob) {
-          const imageType = targetImageType;
-          const dataUrl = await blobToDataUrl(originalBlob);
+        if (blobForUpload) {
+          const dataUrl = await blobToDataUrl(blobForUpload);
           originalImageUrl = dataUrl;
           optimizedImageUrl = dataUrl;
           desktopURL = dataUrl;
           mobileURL = dataUrl;
           thumbnailURL = dataUrl;
-          variants.desktop.size = originalBlob.size;
-          variants.mobile.size = originalBlob.size;
-          variants.thumbnail.size = originalBlob.size;
-          const fallbackWidth = targetWidth;
-          const fallbackHeight = targetHeight;
-          variants.desktop.width = fallbackWidth;
-          variants.desktop.height = fallbackHeight;
-          variants.mobile.width = fallbackWidth;
-          variants.mobile.height = fallbackHeight;
-          variants.thumbnail.width = fallbackWidth;
-          variants.thumbnail.height = fallbackHeight;
-          variants.originalSize = originalBlob.size;
+
+          if (!binaryDataUrl) {
+            binaryDataUrl = dataUrl;
+          }
+
+          const fallbackEntry: VariantEntry = {
+            blob: blobForUpload,
+            size: blobForUpload.size,
+            width: targetWidth,
+            height: targetHeight,
+          };
+
+          variants = {
+            original: blobForUpload,
+            originalSize: blobForUpload.size,
+            desktop: fallbackEntry,
+            mobile: { ...fallbackEntry },
+            thumbnail: { ...fallbackEntry },
+          };
         } else {
           optimizedImageUrl = originalImageUrl;
         }
@@ -295,19 +407,34 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
       }
     }
 
-    // Step 3: Update image record with both image URLs
-    // Update local imageData object
-    const finalWidth = variants.desktop.width || targetWidth;
-    const finalHeight = variants.desktop.height || targetHeight;
-    const finalAspectRatio =
-      computeAspectRatio(finalWidth, finalHeight) ?? targetAspectRatio;
+    if (!variants.original || !variants.desktop || !variants.mobile || !variants.thumbnail) {
+      const fallbackBlob = blobForUpload ?? new Blob();
+      const fallbackEntry: VariantEntry = {
+        blob: fallbackBlob,
+        size: fallbackBlob.size,
+        width: targetWidth,
+        height: targetHeight,
+      };
+
+      variants = {
+        original: fallbackBlob,
+        originalSize: fallbackBlob.size,
+        desktop: fallbackEntry,
+        mobile: { ...fallbackEntry },
+        thumbnail: { ...fallbackEntry },
+      };
+    }
+
+    const finalWidth = variants.desktop?.width ?? targetWidth;
+    const finalHeight = variants.desktop?.height ?? targetHeight;
+    const finalAspectRatio = computeAspectRatio(finalWidth, finalHeight) ?? requestedAspectRatio;
 
     imageData.image_url = originalImageUrl;
     imageData.desktop_image_url = desktopURL;
     imageData.mobile_image_url = mobileURL;
     imageData.thumbnail_image_url = thumbnailURL;
-    imageData.desktop_size_kb = Math.round(variants.desktop.size / 1024);
-    imageData.mobile_size_kb = Math.round(variants.mobile.size / 1024);
+    imageData.desktop_size_kb = Math.round((variants.desktop?.size ?? 0) / 1024);
+    imageData.mobile_size_kb = Math.round((variants.mobile?.size ?? 0) / 1024);
     imageData.original_size_kb = Math.round(variants.originalSize / 1024);
     imageData.optimized_image_url = optimizedImageUrl;
     imageData.ready = true;
@@ -315,73 +442,86 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     imageData.height = finalHeight;
     imageData.aspect_ratio = finalAspectRatio;
     imageData.output_format = targetImageType;
-    imageData.model = request.model || 'runware';
     imageData.cfg_scale = request.cfgScale;
     imageData.steps = request.steps;
-    
-    // Try to update in Supabase
+    if (binaryDataUrl) {
+      imageData.binary = binaryDataUrl;
+    }
+
     try {
+      const updatePayload: Partial<ImageRecordPayload> = {
+        image_url: originalImageUrl,
+        optimized_image_url: optimizedImageUrl,
+        desktop_image_url: desktopURL,
+        mobile_image_url: mobileURL,
+        thumbnail_image_url: thumbnailURL,
+        desktop_size_kb: Math.round((variants.desktop?.size ?? 0) / 1024),
+        mobile_size_kb: Math.round((variants.mobile?.size ?? 0) / 1024),
+        original_size_kb: Math.round(variants.originalSize / 1024),
+        ready: true,
+        width: finalWidth,
+        height: finalHeight,
+        aspect_ratio: finalAspectRatio,
+        output_format: targetImageType,
+        cfg_scale: request.cfgScale,
+        steps: request.steps,
+        model: modelSel,
+      };
+
+      if (binaryDataUrl) {
+        updatePayload.binary = binaryDataUrl;
+      }
+
+      if (imageData.accuracy_score) {
+        updatePayload.accuracy_score = imageData.accuracy_score;
+      }
+
+      if (typeof imageData.cost === "number") {
+        updatePayload.cost = imageData.cost;
+      }
+
+      if (typeof imageData.mature_content === "boolean") {
+        updatePayload.mature_content = imageData.mature_content;
+      }
+
       const { error: updateError } = await supabase
-        .from('images')
-        .update({
-          image_url: originalImageUrl,
-          optimized_image_url: optimizedImageUrl,
-          desktop_image_url: desktopURL,
-          mobile_image_url: mobileURL,
-          thumbnail_image_url: thumbnailURL,
-          desktop_size_kb: Math.round(variants.desktop.size / 1024),
-          mobile_size_kb: Math.round(variants.mobile.size / 1024),
-          original_size_kb: Math.round(variants.originalSize / 1024),
-          ready: true,
-          width: finalWidth,
-          height: finalHeight,
-          aspect_ratio: finalAspectRatio,
-          output_format: targetImageType,
-          cfg_scale: request.cfgScale,
-          steps: request.steps,
-          model: request.model || 'runware'
-        })
-        .eq('id', imageData.id);
+        .from("images")
+        .update(updatePayload)
+        .eq("id", imageData.id);
 
       if (updateError) {
-        console.warn('Warning: Could not update Supabase record:', updateError);
-        // Continue with local imageData
+        console.warn("Warning: Could not update Supabase record:", updateError);
       }
     } catch (error) {
-      console.warn('Warning: Supabase update failed:', error);
-      // Continue with local imageData
+      console.warn("Warning: Supabase update failed:", error);
     }
 
-    console.log('Image generation completed successfully');
-    
-    // Store in local storage for offline/fallback access
+    console.log("Image generation completed successfully");
+
     try {
-      const LOCAL_IMAGES_KEY = 'historify_cached_images';
+      const LOCAL_IMAGES_KEY = "historify_cached_images";
       const existingImages = localStorage.getItem(LOCAL_IMAGES_KEY);
-      const images = existingImages ? JSON.parse(existingImages) : [];
-      
-      // Add the new image to the local cache
+      const images: CachedImage[] = existingImages ? (JSON.parse(existingImages) as CachedImage[]) : [];
+
       images.unshift({
         ...imageData,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       });
-      
-      // Store back in local storage (limit to 50 images to prevent storage issues)
+
       localStorage.setItem(LOCAL_IMAGES_KEY, JSON.stringify(images.slice(0, 50)));
     } catch (e) {
-      console.warn('Failed to cache image in local storage:', e);
-      // Continue anyway - this is just a fallback
+      console.warn("Failed to cache image in local storage:", e);
     }
-    
+
     return {
       success: true,
       imageId: imageData.id,
     };
   } catch (error) {
-    console.error('Image generation failed:', error);
+    console.error("Image generation failed:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : "Unknown error occurred",
     };
   }
 };
