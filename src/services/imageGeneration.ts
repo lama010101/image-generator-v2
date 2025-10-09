@@ -257,10 +257,27 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         throw new Error("REVE image generation failed: no image payload received");
       }
 
-      targetImageType = "png";
-      binaryDataUrl = `data:image/png;base64,${reveResponse.image}`;
+      const baseMimeType = "image/png";
+      sourceBlob = base64ToBlob(reveResponse.image, baseMimeType);
+      binaryDataUrl = await blobToDataUrl(sourceBlob);
       originalImageUrl = binaryDataUrl;
-      sourceBlob = base64ToBlob(reveResponse.image, "image/png");
+
+      if (targetImageType !== "png") {
+        try {
+          const { generateImageInFormat } = await import("@/services/imageFormatService");
+          const converted = await generateImageInFormat({
+            input: sourceBlob,
+            format: targetImageType,
+            maxWidth: Math.max(targetWidth, targetHeight),
+          });
+          sourceBlob = converted.blob;
+          binaryDataUrl = await blobToDataUrl(sourceBlob);
+          originalImageUrl = binaryDataUrl;
+        } catch (conversionError) {
+          console.warn("REVE format conversion failed, falling back to PNG", conversionError);
+          targetImageType = "png";
+        }
+      }
 
       imageData.accuracy_score = {
         request_id: reveResponse.request_id || null,

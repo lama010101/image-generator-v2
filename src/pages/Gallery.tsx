@@ -41,6 +41,7 @@ interface Image {
   accuracy_score: Record<string, any> | null;
   desktop_size_kb: number | null;
   original_size_kb: number | null;
+  output_format: string | null;
   binary?: string | null;
 }
 
@@ -68,8 +69,15 @@ const getModelDisplayName = (model?: string | null): string | null => {
   return model;
 };
 
-const formatCostDisplay = (cost: number | null): string => {
+const formatCostDisplay = (cost: number | null, model?: string | null): string => {
   if (cost === null || cost === undefined) return "—";
+  if (isReveModel(model)) {
+    const precision = Number.isInteger(cost) ? 0 : cost < 0.01 ? 4 : 2;
+    const displayValue = cost.toFixed(precision);
+    const numericValue = Number(displayValue);
+    const isSingular = Math.abs(numericValue - 1) < Number.EPSILON;
+    return `${displayValue} credit${isSingular ? '' : 's'}`;
+  }
   const precision = cost < 0.01 ? 4 : 2;
   return `$${cost.toFixed(precision)}`;
 };
@@ -80,6 +88,11 @@ const FULLSCREEN_FALLBACK_URL = 'https://picsum.photos/800/600?random=fallback';
 const getImageSource = (image: Image): string | null => {
   return image.optimized_image_url ?? null;
 };
+
+const isReveModel = (model?: string | null): boolean => !!model && model.startsWith('reve:');
+
+const sortByCreatedAtDesc = (images: Image[]): Image[] =>
+  [...images].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
 // Local storage key for cached images
 const LOCAL_IMAGES_KEY = 'historify_cached_images';
@@ -191,6 +204,7 @@ const Gallery = () => {
           'aspect_ratio',
           'desktop_size_kb',
           'original_size_kb',
+          'output_format',
         ].join(',');
         const fallbackColumns = [
           'id',
@@ -200,6 +214,9 @@ const Gallery = () => {
           'created_at',
           'ready',
           'prompt',
+          'model',
+          'cost',
+          'output_format',
         ].join(',');
 
         const rangeStart = page * pageSize;
@@ -256,7 +273,7 @@ const Gallery = () => {
           if (withOrder) {
             q = q.order('created_at', { ascending: false });
           }
-          return q.range(rangeStart, rangeEnd);
+          return q.range(rangeStart, rangeEnd).returns<Image[]>();
         };
 
         console.log('Gallery fetch columns:', primaryColumns);
@@ -273,12 +290,12 @@ const Gallery = () => {
               throw new Error('Failed to fetch images – Supabase unavailable');
             }
             console.log('Fetched images from Supabase (fallback):', fallbackData?.length || 0);
-            return fallbackData as Image[];
+            return sortByCreatedAtDesc(fallbackData ?? []);
           }
           throw new Error('Failed to fetch images – Supabase unavailable');
         }
         console.log('Fetched images from Supabase:', data?.length || 0);
-        return data as Image[];
+        return sortByCreatedAtDesc(data ?? []);
       } catch (e) {
         console.error('Error fetching from Supabase:', e);
         throw e;
@@ -494,7 +511,7 @@ const filteredImages = images || [];
                           </div>
                           <div className="flex items-end justify-between text-xs">
                             <div className="text-sm font-semibold text-foreground">
-                              {formatCostDisplay(image.cost)}
+                              {formatCostDisplay(image.cost, image.model)}
                             </div>
                             {image.model && (
                               <span className="text-[11px] text-muted-foreground font-mono">
@@ -572,6 +589,12 @@ const filteredImages = images || [];
                               <p className="text-muted-foreground">{image.model}</p>
                             </div>
                           ) : null}
+                          {image.output_format && (
+                            <div>
+                              <div className="font-medium">Format</div>
+                              <p className="text-muted-foreground">{image.output_format.toUpperCase()}</p>
+                            </div>
+                          )}
                           {typeof image.cfg_scale === 'number' && (
                             <div>
                               <div className="font-medium">CFG Scale</div>
@@ -592,8 +615,8 @@ const filteredImages = images || [];
                           )}
                           {image.cost !== null && (
                             <div>
-                              <div className="font-medium">Cost</div>
-                              <p className="text-muted-foreground">{formatCostDisplay(image.cost)}</p>
+                              <div className="font-medium">{isReveModel(image.model) ? 'Credits' : 'Cost'}</div>
+                              <p className="text-muted-foreground">{formatCostDisplay(image.cost, image.model)}</p>
                             </div>
                           )}
                         </div>

@@ -47,8 +47,8 @@ const modelPresets: Record<string, Partial<GenerationSettings>> = {
   "bfl:2@2": { width: 1344, height: 576 },
   "bfl:3@1": { width: 1344, height: 576 },
   "bfl:4@1": { width: 1344, height: 576 },
-  "reve:latest": { width: 1536, height: 1024, imageType: "png" },
-  "reve:reve-create@20250915": { width: 1536, height: 1024, imageType: "png" },
+  "reve:latest": { width: 1536, height: 1024, imageType: "webp" },
+  "reve:reve-create@20250915": { width: 1536, height: 1024, imageType: "webp" },
 };
 
 const DEFAULT_WIDTH = 1344;

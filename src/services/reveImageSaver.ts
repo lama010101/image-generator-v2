@@ -19,7 +19,8 @@ export interface ReveSaveResult {
   error?: string
 }
 
-const IMAGE_FORMAT: 'png' | 'jpg' | 'webp' = 'png'
+const SOURCE_IMAGE_FORMAT: 'png' = 'png'
+const DEFAULT_TARGET_FORMAT: 'png' | 'jpg' | 'webp' = 'webp'
 
 const mimeTypeForFormat = (format: 'png' | 'jpg' | 'webp') => {
   switch (format) {
@@ -92,11 +93,30 @@ export const saveReveImage = async (params: ReveSaveParams): Promise<ReveSaveRes
     }
 
     const imageId = createImageId()
-    const imageBlob = base64ToBlob(imageBase64, IMAGE_FORMAT)
+    const sourceBlob = base64ToBlob(imageBase64, SOURCE_IMAGE_FORMAT)
 
-    const { generateMultiFormatVariants } = await import('@/services/imageFormatService')
+    const { generateImageInFormat, generateMultiFormatVariants } = await import('@/services/imageFormatService')
 
-    const variants = await generateMultiFormatVariants(imageBlob, IMAGE_FORMAT)
+    let targetFormat: 'png' | 'jpg' | 'webp' = DEFAULT_TARGET_FORMAT
+    let baseBlob = sourceBlob
+    const needsConversion = targetFormat === 'webp' || targetFormat === 'jpg'
+
+    if (needsConversion) {
+      try {
+        const converted = await generateImageInFormat({
+          input: sourceBlob,
+          format: targetFormat,
+          maxWidth: 10000,
+        })
+        baseBlob = converted.blob
+      } catch (conversionError) {
+        console.warn('REVE image conversion to WebP failed, keeping PNG output', conversionError)
+        targetFormat = SOURCE_IMAGE_FORMAT
+        baseBlob = sourceBlob
+      }
+    }
+
+    const variants = await generateMultiFormatVariants(baseBlob, targetFormat)
 
     const [originalDataUrl, desktopDataUrl, mobileDataUrl, thumbnailDataUrl] = await Promise.all([
       blobToDataUrl(variants.original),
@@ -119,7 +139,7 @@ export const saveReveImage = async (params: ReveSaveParams): Promise<ReveSaveRes
       original_size_kb: Math.round(variants.originalSize / 1024),
       width: variants.desktop.width,
       height: variants.desktop.height,
-      output_format: IMAGE_FORMAT,
+      output_format: targetFormat,
       cost: typeof creditsUsed === 'number' ? creditsUsed : undefined,
       accuracy_score: {
         request_id: requestId ?? null,
