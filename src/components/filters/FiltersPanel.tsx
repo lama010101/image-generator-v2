@@ -20,6 +20,8 @@ export interface FiltersState {
   celebrityOnly?: boolean;
   /** Date created range [from, to] (timestamps in ms) */
   dateCreatedRange?: [number, number];
+  /** Year range [min, max] */
+  yearRange?: [number, number];
   /** Approximate number of people range [min, max] */
   numberPeopleRange?: [number, number];
   /** Confidence range [min, max] */
@@ -36,6 +38,7 @@ interface FiltersPanelProps {
   onClear?: () => void;
   themeOptions?: string[];
   locationOptions?: string[];
+  yearBounds?: { minYear: number; maxYear: number } | null;
 }
 
 const FiltersPanel: React.FC<FiltersPanelProps> = ({
@@ -44,8 +47,19 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onClear,
   themeOptions = [],
   locationOptions = [],
+  yearBounds = null,
 }) => {
   const ALL_VALUE = "__ALL__";
+  const fallbackMinYear = 1900;
+  const currentYear = React.useMemo(() => new Date().getFullYear(), []);
+  const rawYearMin = yearBounds?.minYear ?? fallbackMinYear;
+  const rawYearMax = yearBounds?.maxYear ?? currentYear;
+  const yearMin = Math.min(rawYearMin, rawYearMax);
+  const yearMax = Math.max(rawYearMin, rawYearMax);
+  const defaultYearRange = React.useMemo<[number, number]>(
+    () => [yearMin, yearMax],
+    [yearMin, yearMax]
+  );
 
   const update = (partial: Partial<FiltersState>) => {
     onChange({ ...state, ...partial });
@@ -54,6 +68,9 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   // Local slider states to avoid spamming queries while dragging
   const [localDateRange, setLocalDateRange] = React.useState<[number, number]>(
     state.dateCreatedRange ?? [1577836800000, Date.now()]
+  );
+  const [localYearRange, setLocalYearRange] = React.useState<[number, number]>(
+    state.yearRange ?? defaultYearRange
   );
   const [localPeopleRange, setLocalPeopleRange] = React.useState<[number, number]>(
     state.numberPeopleRange ?? [0, 100]
@@ -66,6 +83,23 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   React.useEffect(() => {
     if (state.dateCreatedRange) setLocalDateRange(state.dateCreatedRange);
   }, [state.dateCreatedRange]);
+  React.useEffect(() => {
+    if (state.yearRange) {
+      const [minYear, maxYear] = state.yearRange;
+      const clamped: [number, number] = [
+        Math.max(yearMin, Math.min(yearMax, minYear)),
+        Math.max(yearMin, Math.min(yearMax, maxYear))
+      ];
+      const sorted: [number, number] =
+        clamped[0] <= clamped[1] ? clamped : [clamped[1], clamped[0]];
+      setLocalYearRange(sorted);
+      if (sorted[0] !== minYear || sorted[1] !== maxYear) {
+        update({ yearRange: sorted });
+      }
+    } else {
+      setLocalYearRange(defaultYearRange);
+    }
+  }, [state.yearRange, defaultYearRange, yearMin, yearMax]);
   React.useEffect(() => {
     if (state.numberPeopleRange) setLocalPeopleRange(state.numberPeopleRange);
   }, [state.numberPeopleRange]);
@@ -152,6 +186,40 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Year Range */}
+              <div className="mb-4">
+                <Label className="mb-2 block text-sm font-medium">Year Range</Label>
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <span>{yearMin}</span>
+                  <span>{yearMax}</span>
+                </div>
+                <div className="flex justify-between text-xs font-medium mb-1">
+                  <span>
+                    {localYearRange
+                      ? `${localYearRange[0]} - ${localYearRange[1]}`
+                      : `${yearMin} - ${yearMax}`}
+                  </span>
+                </div>
+                <Slider
+                  min={yearMin}
+                  max={yearMax}
+                  step={1}
+                  value={localYearRange}
+                  onValueChange={(val) => setLocalYearRange(val as [number, number])}
+                  onValueCommit={(val) => {
+                    const [minYear, maxYear] = val as [number, number];
+                    const clamped: [number, number] = [
+                      Math.max(yearMin, Math.min(yearMax, minYear)),
+                      Math.max(yearMin, Math.min(yearMax, maxYear))
+                    ];
+                    const sorted: [number, number] =
+                      clamped[0] <= clamped[1] ? clamped : [clamped[1], clamped[0]];
+                    update({ yearRange: sorted });
+                  }}
+                  disabled={yearMin === yearMax}
+                />
               </div>
 
               {/* Celebrity Only */}

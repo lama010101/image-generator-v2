@@ -4,6 +4,7 @@ import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -138,6 +139,7 @@ const Gallery = () => {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<number>(25);
   const [fullscreenImage, setFullscreenImage] = useState<Image | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Query for total count of images matching filters
   const { data: totalCountData } = useQuery({
@@ -307,8 +309,30 @@ const Gallery = () => {
 
     // No longer filter out by ready status
   // Filtering now handled in Supabase query
-const countsEnabled = typeof totalCountData === 'number';
-const filteredImages = images || [];
+  const countsEnabled = typeof totalCountData === 'number';
+  const sortedImages = useMemo(() => {
+    if (!images) return [];
+    return sortByCreatedAtDesc(images);
+  }, [images]);
+
+  const filteredImages = useMemo(() => {
+    const source = sortedImages;
+    if (source.length === 0) return [];
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return source;
+    return source.filter((image) => {
+      const fields = [
+        image.title,
+        image.description,
+        image.prompt,
+        image.country,
+        image.model,
+      ];
+      return fields.some((field) =>
+        typeof field === 'string' && field.toLowerCase().includes(term)
+      );
+    });
+  }, [sortedImages, searchTerm]);
 
   // Bulk actions for selected images
   const handleDeleteSelected = async () => {
@@ -392,11 +416,22 @@ const filteredImages = images || [];
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Image Gallery</h1>
-            <p className="text-muted-foreground">
-              {filteredImages.length} generated images • Click to view details
-            </p>
+          <div className="flex flex-col items-start sm:items-end gap-2">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Image Gallery</h1>
+              <p className="text-muted-foreground">
+                {filteredImages.length} generated images • Click to view details
+              </p>
+            </div>
+            <Input
+              value={searchTerm}
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
+                setPage(0);
+              }}
+              placeholder="Search images"
+              className="w-full sm:w-64"
+            />
           </div>
 
         </div>

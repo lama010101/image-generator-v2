@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,16 +56,66 @@ const Prompts = () => {
   const pageSizeOptions = [10, 25, 50, 100, 150, 200];
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState<number>(0);
-  const [filters, setFilters] = useState<FiltersState>({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState<FiltersState>({});
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
-    const [generationSettings, setGenerationSettings] =
+  const [generationSettings, setGenerationSettings] =
     useState<GenerationSettings>(defaultSettings);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const { data: yearBoundsData } = useQuery({
+    queryKey: ['images-year-bounds'],
+    queryFn: async () => {
+      const minQuery = supabase
+        .from('images')
+        .select('year')
+        .not('year', 'is', null)
+        .order('year', { ascending: true })
+        .limit(1);
+
+      const maxQuery = supabase
+        .from('images')
+        .select('year')
+        .not('year', 'is', null)
+        .order('year', { ascending: false })
+        .limit(1);
+
+      const [{ data: minData, error: minError }, { data: maxData, error: maxError }] = await Promise.all([minQuery, maxQuery]);
+
+      if (minError) throw minError;
+      if (maxError) throw maxError;
+
+      const minYear = minData?.[0]?.year ?? null;
+      const maxYear = maxData?.[0]?.year ?? null;
+
+      if (minYear === null || maxYear === null) return null;
+
+      return { minYear, maxYear };
+    },
+    staleTime: 30000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!yearBoundsData) return;
+    setFilters(prev => {
+      const minYear = yearBoundsData.minYear;
+      const maxYear = yearBoundsData.maxYear;
+      if (!prev.yearRange) {
+        return { ...prev, yearRange: [minYear, maxYear] };
+      }
+      const [prevMin, prevMax] = prev.yearRange;
+      const clampedMin = Math.max(minYear, Math.min(maxYear, prevMin));
+      const clampedMax = Math.max(minYear, Math.min(maxYear, prevMax));
+      const sorted: [number, number] = clampedMin <= clampedMax ? [clampedMin, clampedMax] : [clampedMax, clampedMin];
+      if (sorted[0] === prevMin && sorted[1] === prevMax) return prev;
+      return { ...prev, yearRange: sorted };
+    });
+  }, [yearBoundsData]);
 
   // Fetch total count of prompts matching filters
   const { data: totalCountData } = useQuery({
@@ -85,6 +135,10 @@ const Prompts = () => {
       if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
       if (filters.theme) query = query.eq('theme', filters.theme);
       if (filters.location) query = query.eq('country', filters.location);
+      if (filters.yearRange) {
+        const [minYear, maxYear] = filters.yearRange;
+        query = query.gte('year', minYear).lte('year', maxYear);
+      }
       if (filters.dateCreatedRange) {
         const [fromTs, toTs] = filters.dateCreatedRange;
         query = query
@@ -127,6 +181,10 @@ const Prompts = () => {
       if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
       if (filters.theme) query = query.eq('theme', filters.theme);
       if (filters.location) query = query.eq('country', filters.location);
+      if (filters.yearRange) {
+        const [minYear, maxYear] = filters.yearRange;
+        query = query.gte('year', minYear).lte('year', maxYear);
+      }
       if (filters.dateCreatedRange) {
         const [fromTs, toTs] = filters.dateCreatedRange;
         query = query
@@ -370,6 +428,7 @@ const Prompts = () => {
                 onClear={() => setFilters({})}
                 themeOptions={[...new Set(prompts?.map(p => p.theme).filter(Boolean) as string[])]}
                 locationOptions={[...new Set(prompts?.map(p => p.country).filter(Boolean) as string[])]}
+                yearBounds={yearBoundsData}
               />
               <GenerationSettingsPanel
                 settings={generationSettings}
