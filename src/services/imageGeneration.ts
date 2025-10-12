@@ -458,7 +458,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
     imageData.mobile_size_kb = Math.round((variants.mobile?.size ?? 0) / 1024);
     imageData.original_size_kb = Math.round(variants.originalSize / 1024);
     imageData.optimized_image_url = optimizedImageUrl;
-    imageData.ready = true;
+    imageData.ready = false;
     imageData.width = finalWidth;
     imageData.height = finalHeight;
     imageData.aspect_ratio = finalAspectRatio;
@@ -479,7 +479,7 @@ export const generateImage = async (request: GenerationRequest): Promise<Generat
         desktop_size_kb: Math.round((variants.desktop?.size ?? 0) / 1024),
         mobile_size_kb: Math.round((variants.mobile?.size ?? 0) / 1024),
         original_size_kb: Math.round(variants.originalSize / 1024),
-        ready: true,
+        ready: false,
         width: finalWidth,
         height: finalHeight,
         aspect_ratio: finalAspectRatio,

@@ -152,7 +152,7 @@ export const saveReveImage = async (params: ReveSaveParams): Promise<ReveSaveRes
       cfg_scale: null,
       steps: null,
       model: `reve:${version}`,
-      ready: true,
+      ready: false,
       ai_generated: true,
     }
 

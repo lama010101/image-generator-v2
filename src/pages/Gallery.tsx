@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FiltersPanel, { FiltersState } from "@/components/filters/FiltersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -86,6 +86,23 @@ const formatCostDisplay = (cost: number | null, model?: string | null): string =
 const FALLBACK_IMAGE_URL = 'https://picsum.photos/400/400?random=fallback';
 const FULLSCREEN_FALLBACK_URL = 'https://picsum.photos/800/600?random=fallback';
 
+const formatCreditsTotal = (value: number): string => {
+  const precision = Number.isInteger(value) ? 0 : value < 1 ? 4 : 2;
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: precision === 0 ? 0 : 2,
+    maximumFractionDigits: precision,
+  });
+};
+
+const formatDollarTotal = (value: number): string => {
+  return value.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 const getImageSource = (image: Image): string | null => {
   return image.optimized_image_url ?? null;
 };
@@ -141,6 +158,51 @@ const Gallery = () => {
   const [fullscreenImage, setFullscreenImage] = useState<Image | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const applyFilters = useCallback((query: any) => {
+    let filteredQuery = query;
+    if (activeFilters.theme) {
+      filteredQuery = filteredQuery.eq('theme', activeFilters.theme);
+    }
+    if (activeFilters.location) {
+      filteredQuery = filteredQuery.eq('country', activeFilters.location);
+    }
+    if (activeFilters.dateCreatedRange) {
+      const [fromTs, toTs] = activeFilters.dateCreatedRange;
+      filteredQuery = filteredQuery
+        .gte('created_at', new Date(fromTs).toISOString())
+        .lte('created_at', new Date(toTs).toISOString());
+    }
+    if (activeFilters.numberPeopleRange) {
+      const [minP, maxP] = activeFilters.numberPeopleRange;
+      filteredQuery = filteredQuery
+        .gte('approx_people_count', minP)
+        .lte('approx_people_count', maxP);
+    }
+    if (activeFilters.confidenceRange) {
+      const [minC, maxC] = activeFilters.confidenceRange;
+      filteredQuery = filteredQuery
+        .gte('confidence', minC)
+        .lte('confidence', maxC);
+    }
+    if (activeFilters.celebrityOnly) {
+      filteredQuery = filteredQuery.eq('celebrity', true);
+    }
+    if (activeFilters.realEventStatus === 'true') {
+      filteredQuery = filteredQuery.eq('real_event', true);
+    } else if (activeFilters.realEventStatus === 'fictional') {
+      filteredQuery = filteredQuery.eq('real_event', false);
+    }
+    if (activeFilters.hasFullHints) {
+      filteredQuery = filteredQuery.eq('has_full_hints', true);
+    }
+    if (activeFilters.readyStatus === 'ready') {
+      filteredQuery = filteredQuery.eq('ready', true);
+    } else if (activeFilters.readyStatus === 'not_ready') {
+      filteredQuery = filteredQuery.eq('ready', false);
+    }
+    return filteredQuery;
+  }, [activeFilters]);
+
   // Query for total count of images matching filters
   const { data: totalCountData } = useQuery({
     queryKey: ['images-count', activeFilters],
@@ -148,29 +210,37 @@ const Gallery = () => {
       let query = supabase
         .from('images')
         .select('*', { count: 'exact', head: true });
-      if (activeFilters.theme) query = query.eq('theme', activeFilters.theme);
-      if (activeFilters.location) query = query.eq('country', activeFilters.location);
-      if (activeFilters.dateCreatedRange) {
-        const [fromTs, toTs] = activeFilters.dateCreatedRange;
-        query = query.gte('created_at', new Date(fromTs).toISOString()).lte('created_at', new Date(toTs).toISOString());
-      }
-      if (activeFilters.numberPeopleRange) {
-        const [minP, maxP] = activeFilters.numberPeopleRange;
-        query = query.gte('approx_people_count', minP).lte('approx_people_count', maxP);
-      }
-      if (activeFilters.confidenceRange) {
-        const [minC, maxC] = activeFilters.confidenceRange;
-        query = query.gte('confidence', minC).lte('confidence', maxC);
-      }
-      if (activeFilters.celebrityOnly) query = query.eq('celebrity', true);
-      if (activeFilters.realEventStatus === 'true') query = query.eq('real_event', true);
-      else if (activeFilters.realEventStatus === 'fictional') query = query.eq('real_event', false);
-      if (activeFilters.hasFullHints) query = query.eq('has_full_hints', true);
-      if (activeFilters.readyStatus === 'ready') query = query.eq('ready', true);
-      else if (activeFilters.readyStatus === 'not_ready') query = query.eq('ready', false);
+      query = applyFilters(query);
       const { count, error } = await query;
       if (error) throw error;
       return count ?? 0;
+    },
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const { data: totalsData, isLoading: totalsLoading, error: totalsError } = useQuery({
+    queryKey: ['images-totals', activeFilters],
+    queryFn: async () => {
+      const { data, error } = await applyFilters(
+        supabase.from('images').select('cost, model')
+      );
+
+      if (error) throw error;
+
+      const paidImages = (data ?? []).filter((row): row is { cost: number; model: string | null } =>
+        typeof row.cost === 'number' && row.cost > 0
+      );
+
+      const totalCredits = paidImages.reduce((sum, row) => {
+        return row.model?.startsWith('reve:') ? sum + row.cost : sum;
+      }, 0);
+
+      const totalDollars = paidImages.reduce((sum, row) => {
+        return row.model?.startsWith('reve:') ? sum : sum + row.cost;
+      }, 0);
+
+      return { totalCredits, totalDollars };
     },
     staleTime: 30000,
     retry: false,
@@ -223,51 +293,6 @@ const Gallery = () => {
 
         const rangeStart = page * pageSize;
         const rangeEnd = (page + 1) * pageSize - 1;
-
-        const applyFilters = (query: any) => {
-          let filteredQuery = query;
-          if (activeFilters.theme) {
-            filteredQuery = filteredQuery.eq('theme', activeFilters.theme);
-          }
-          if (activeFilters.location) {
-            filteredQuery = filteredQuery.eq('country', activeFilters.location);
-          }
-          if (activeFilters.dateCreatedRange) {
-            const [fromTs, toTs] = activeFilters.dateCreatedRange;
-            filteredQuery = filteredQuery
-              .gte('created_at', new Date(fromTs).toISOString())
-              .lte('created_at', new Date(toTs).toISOString());
-          }
-          if (activeFilters.numberPeopleRange) {
-            const [minP, maxP] = activeFilters.numberPeopleRange;
-            filteredQuery = filteredQuery
-              .gte('approx_people_count', minP)
-              .lte('approx_people_count', maxP);
-          }
-          if (activeFilters.confidenceRange) {
-            const [minC, maxC] = activeFilters.confidenceRange;
-            filteredQuery = filteredQuery
-              .gte('confidence', minC)
-              .lte('confidence', maxC);
-          }
-          if (activeFilters.celebrityOnly) {
-            filteredQuery = filteredQuery.eq('celebrity', true);
-          }
-          if (activeFilters.realEventStatus === 'true') {
-            filteredQuery = filteredQuery.eq('real_event', true);
-          } else if (activeFilters.realEventStatus === 'fictional') {
-            filteredQuery = filteredQuery.eq('real_event', false);
-          }
-          if (activeFilters.hasFullHints) {
-            filteredQuery = filteredQuery.eq('has_full_hints', true);
-          }
-          if (activeFilters.readyStatus === 'ready') {
-            filteredQuery = filteredQuery.eq('ready', true);
-          } else if (activeFilters.readyStatus === 'not_ready') {
-            filteredQuery = filteredQuery.eq('ready', false);
-          }
-          return filteredQuery;
-        };
 
         const buildQuery = (columns: string, withOrder: boolean) => {
           let q = supabase.from('images').select(columns);
@@ -388,11 +413,30 @@ const Gallery = () => {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6">
         {/* Total count display */}
-        {countsEnabled && (
-          <div className="mb-4 text-sm text-muted-foreground">
-            Total images: {typeof totalCountData === 'number' ? totalCountData : '...'}
+        <div className="mb-4 space-y-2">
+          <div className="flex flex-wrap items-start gap-6">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Credits</div>
+              <div className="text-lg font-semibold text-foreground">
+                {totalsLoading ? '…' : totalsData ? formatCreditsTotal(totalsData.totalCredits) : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Total USD</div>
+              <div className="text-lg font-semibold text-foreground">
+                {totalsLoading ? '…' : totalsData ? formatDollarTotal(totalsData.totalDollars) : '—'}
+              </div>
+            </div>
           </div>
-        )}
+          {countsEnabled && (
+            <div className="text-sm text-muted-foreground">
+              Total images: {typeof totalCountData === 'number' ? totalCountData : '...'}
+            </div>
+          )}
+          {totalsError && (
+            <div className="text-xs text-destructive">Failed to load totals.</div>
+          )}
+        </div>
         {/* Filters Panel */}
         <FiltersPanel
           state={filters}
